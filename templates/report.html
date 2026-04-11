@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} — {{ target }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        /* =========================================================
+           VulnScanner HTML Report — Dark Theme Stylesheet
+           ========================================================= */
+        :root {
+            --bg-primary: #0f0f1a;
+            --bg-secondary: #1a1a2e;
+            --bg-card: #16213e;
+            --bg-card-hover: #1a2744;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0b8;
+            --text-accent: #64ffda;
+            --border-color: #2a2a4a;
+            --critical: #ff1744;
+            --critical-bg: rgba(255, 23, 68, 0.15);
+            --high: #ff6d00;
+            --high-bg: rgba(255, 109, 0, 0.15);
+            --medium: #ffab00;
+            --medium-bg: rgba(255, 171, 0, 0.15);
+            --low: #00e5ff;
+            --low-bg: rgba(0, 229, 255, 0.15);
+            --info: #536dfe;
+            --info-bg: rgba(83, 109, 254, 0.15);
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-danger: linear-gradient(135deg, #f5365c 0%, #f56036 100%);
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+        /* --- Header --- */
+        .report-header {
+            background: var(--gradient-primary);
+            padding: 40px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow);
+        }
+        .report-header h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+        .report-header .meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            color: rgba(255,255,255,0.85);
+            font-size: 0.95rem;
+        }
+        .report-header .meta span { display: flex; align-items: center; gap: 6px; }
+
+        /* --- Risk Score Banner --- */
+        .risk-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 30px 40px;
+            margin-bottom: 30px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+        }
+        .risk-score-circle {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            font-weight: 800;
+            border: 4px solid;
+            flex-shrink: 0;
+        }
+        .risk-score-circle .label { font-size: 0.7rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+        .risk-CRITICAL .risk-score-circle { color: var(--critical); border-color: var(--critical); background: var(--critical-bg); }
+        .risk-HIGH .risk-score-circle     { color: var(--high);     border-color: var(--high);     background: var(--high-bg); }
+        .risk-MEDIUM .risk-score-circle   { color: var(--medium);   border-color: var(--medium);   background: var(--medium-bg); }
+        .risk-LOW .risk-score-circle      { color: var(--low);      border-color: var(--low);      background: var(--low-bg); }
+        .risk-INFORMATIONAL .risk-score-circle { color: var(--info); border-color: var(--info); background: var(--info-bg); }
+
+        .risk-details { flex: 1; margin-left: 40px; }
+        .risk-details h2 { font-size: 1.5rem; margin-bottom: 12px; }
+
+        .severity-pills { display: flex; gap: 12px; flex-wrap: wrap; }
+        .severity-pill {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .sev-critical { background: var(--critical-bg); color: var(--critical); border: 1px solid var(--critical); }
+        .sev-high     { background: var(--high-bg);     color: var(--high);     border: 1px solid var(--high); }
+        .sev-medium   { background: var(--medium-bg);   color: var(--medium);   border: 1px solid var(--medium); }
+        .sev-low      { background: var(--low-bg);      color: var(--low);      border: 1px solid var(--low); }
+        .sev-info     { background: var(--info-bg);     color: var(--info);     border: 1px solid var(--info); }
+
+        /* --- Charts Section --- */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+        }
+        .chart-card h3 { margin-bottom: 16px; color: var(--text-accent); font-size: 1.1rem; }
+        .chart-wrapper { position: relative; height: 280px; }
+
+        /* --- Section Cards --- */
+        .section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+        }
+        .section h2 {
+            color: var(--text-accent);
+            font-size: 1.3rem;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        /* --- Tables --- */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+        th, td {
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.9rem;
+        }
+        th {
+            background: rgba(100, 255, 218, 0.08);
+            color: var(--text-accent);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+        }
+        tr:hover { background: var(--bg-card-hover); }
+        td { color: var(--text-secondary); }
+
+        /* --- Finding Cards --- */
+        .finding-card {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 16px;
+            border-left: 4px solid;
+            transition: transform 0.2s;
+        }
+        .finding-card:hover { transform: translateX(4px); }
+        .finding-card.critical { border-left-color: var(--critical); }
+        .finding-card.high     { border-left-color: var(--high); }
+        .finding-card.medium   { border-left-color: var(--medium); }
+        .finding-card.low      { border-left-color: var(--low); }
+        .finding-card.info     { border-left-color: var(--info); }
+
+        .finding-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .finding-title { font-weight: 700; font-size: 1.05rem; }
+        .finding-badge {
+            padding: 3px 12px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .badge-critical { background: var(--critical); color: #fff; }
+        .badge-high     { background: var(--high); color: #fff; }
+        .badge-medium   { background: var(--medium); color: #000; }
+        .badge-low      { background: var(--low); color: #000; }
+        .badge-info     { background: var(--info); color: #fff; }
+
+        .finding-detail { margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary); }
+        .finding-detail strong { color: var(--text-primary); }
+        .finding-detail .label-tag {
+            display: inline-block;
+            background: rgba(100,255,218,0.1);
+            color: var(--text-accent);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-right: 4px;
+        }
+        .remediation-box {
+            background: rgba(100, 255, 218, 0.05);
+            border: 1px solid rgba(100, 255, 218, 0.2);
+            border-radius: 6px;
+            padding: 10px 14px;
+            margin-top: 10px;
+            font-size: 0.85rem;
+        }
+        .remediation-box strong { color: var(--text-accent); }
+
+        /* --- Footer --- */
+        .report-footer {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: 30px;
+        }
+
+        /* --- Responsive --- */
+        @media (max-width: 768px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .risk-banner { flex-direction: column; text-align: center; }
+            .risk-details { margin-left: 0; margin-top: 20px; }
+            .severity-pills { justify-content: center; }
+        }
+
+        /* --- Print --- */
+        @media print {
+            body { background: #fff; color: #000; }
+            .report-header { background: #333; }
+            .finding-card:hover { transform: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- ===== HEADER ===== -->
+        <div class="report-header">
+            <h1>🛡️ {{ title }}</h1>
+            <div class="meta">
+                <span>📍 Target: <strong>{{ target }}</strong></span>
+                <span>📅 Date: <strong>{{ scan_date }}</strong></span>
+                <span>⏱️ Duration: <strong>{{ scan_duration }}s</strong></span>
+                <span>🔍 Findings: <strong>{{ total_findings }}</strong></span>
+                <span>🤖 By: <strong>{{ author }}</strong></span>
+            </div>
+        </div>
+
+        <!-- ===== RISK SCORE ===== -->
+        <div class="risk-banner risk-{{ risk_level }}">
+            <div class="risk-score-circle">
+                {{ risk_score }}
+                <span class="label">Risk Score</span>
+            </div>
+            <div class="risk-details">
+                <h2>Overall Risk: {{ risk_level }}</h2>
+                <div class="severity-pills">
+                    <span class="severity-pill sev-critical">Critical: {{ severity_counts.critical }}</span>
+                    <span class="severity-pill sev-high">High: {{ severity_counts.high }}</span>
+                    <span class="severity-pill sev-medium">Medium: {{ severity_counts.medium }}</span>
+                    <span class="severity-pill sev-low">Low: {{ severity_counts.low }}</span>
+                    <span class="severity-pill sev-info">Info: {{ severity_counts.info }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== CHARTS ===== -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>📊 Findings by Severity</h3>
+                <div class="chart-wrapper">
+                    <canvas id="severityChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>📊 Findings by Module</h3>
+                <div class="chart-wrapper">
+                    <canvas id="moduleChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== OPEN PORTS ===== -->
+        {% if port_results %}
+        <div class="section">
+            <h2>🔌 Open Ports ({{ port_results|length }} found)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>IP</th>
+                        <th>Port</th>
+                        <th>Service</th>
+                        <th>State</th>
+                        <th>Scan Type</th>
+                        <th>Banner (truncated)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for port in port_results %}
+                    <tr>
+                        <td>{{ port.ip }}</td>
+                        <td>{{ port.port }}</td>
+                        <td>{{ port.service }}</td>
+                        <td style="color: #4caf50;">{{ port.state }}</td>
+                        <td>{{ port.scan_type }}</td>
+                        <td>{{ port.banner[:80] if port.banner else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- ===== DETECTED SERVICES ===== -->
+        {% if service_results %}
+        <div class="section">
+            <h2>🔎 Detected Services ({{ service_results|length }})</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>IP</th>
+                        <th>Port</th>
+                        <th>Service</th>
+                        <th>Version</th>
+                        <th>Confidence</th>
+                        <th>Detection</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for svc in service_results %}
+                    <tr>
+                        <td>{{ svc.ip }}</td>
+                        <td>{{ svc.port }}</td>
+                        <td>{{ svc.service }}</td>
+                        <td>{{ svc.version }}</td>
+                        <td>{{ svc.confidence }}</td>
+                        <td>{{ svc.detection_method }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- ===== FINDINGS ===== -->
+        <div class="section">
+            <h2>⚠️ Vulnerability Findings ({{ findings|length }})</h2>
+
+            {% for finding in findings %}
+            <div class="finding-card {{ finding.severity|lower }}">
+                <div class="finding-header">
+                    <span class="finding-title">
+                        {{ finding.type }}
+                        {% if finding.cve_id is defined and finding.cve_id %}
+                            — {{ finding.cve_id }}
+                        {% endif %}
+                    </span>
+                    <span class="finding-badge badge-{{ finding.severity|lower }}">
+                        {{ finding.severity }}
+                        {% if finding.cvss_score is defined and finding.cvss_score %}
+                            (CVSS {{ finding.cvss_score }})
+                        {% endif %}
+                    </span>
+                </div>
+
+                <div class="finding-detail">
+                    <p>
+                        <span class="label-tag">Target</span>
+                        {{ finding.target if finding.target is defined else '' }}
+                        {{ finding.url if finding.url is defined else '' }}
+                    </p>
+
+                    {% if finding.evidence is defined and finding.evidence %}
+                    <p><span class="label-tag">Evidence</span> {{ finding.evidence }}</p>
+                    {% endif %}
+
+                    {% if finding.parameter is defined and finding.parameter and finding.parameter != 'N/A' %}
+                    <p><span class="label-tag">Parameter</span> {{ finding.parameter }}</p>
+                    {% endif %}
+
+                    {% if finding.payload is defined and finding.payload %}
+                    <p><span class="label-tag">Payload</span> <code>{{ finding.payload }}</code></p>
+                    {% endif %}
+
+                    {% if finding.service is defined and finding.service %}
+                    <p><span class="label-tag">Service</span> {{ finding.service }}
+                        {% if finding.version is defined and finding.version %} v{{ finding.version }}{% endif %}
+                    </p>
+                    {% endif %}
+
+                    <p><strong>Description:</strong> {{ finding.description }}</p>
+                </div>
+
+                {% if finding.remediation is defined and finding.remediation %}
+                <div class="remediation-box">
+                    <strong>🩹 Remediation:</strong> {{ finding.remediation }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            {% if findings|length == 0 %}
+            <p style="text-align:center; color: #4caf50; font-size: 1.2rem; padding: 40px;">
+                ✅ No vulnerabilities detected. The target appears secure based on the tests performed.
+            </p>
+            {% endif %}
+        </div>
+
+        <!-- ===== FOOTER ===== -->
+        <div class="report-footer">
+            <p>Generated by <strong>VulnScanner v1.0</strong> — {{ scan_date }}</p>
+            <p>⚖️ This report is for authorized security assessment purposes only.</p>
+            <p>Unauthorized use of this information is prohibited and may violate applicable laws.</p>
+        </div>
+
+    </div>
+
+    <!-- ===== CHART.JS SCRIPTS ===== -->
+    <script>
+        // --- Severity Doughnut Chart ---
+        const sevCtx = document.getElementById('severityChart').getContext('2d');
+        new Chart(sevCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Critical', 'High', 'Medium', 'Low', 'Info'],
+                datasets: [{
+                    data: [
+                        {{ severity_counts.critical }},
+                        {{ severity_counts.high }},
+                        {{ severity_counts.medium }},
+                        {{ severity_counts.low }},
+                        {{ severity_counts.info }}
+                    ],
+                    backgroundColor: [
+                        '#ff1744',
+                        '#ff6d00',
+                        '#ffab00',
+                        '#00e5ff',
+                        '#536dfe'
+                    ],
+                    borderColor: '#16213e',
+                    borderWidth: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#e0e0e0',
+                            padding: 16,
+                            usePointStyle: true,
+                            pointStyleWidth: 12
+                        }
+                    }
+                },
+                cutout: '55%'
+            }
+        });
+
+        // --- Module Bar Chart ---
+        const modCtx = document.getElementById('moduleChart').getContext('2d');
+        const moduleLabels = {{ module_counts.keys()|list|tojson }};
+        const moduleValues = {{ module_counts.values()|list|tojson }};
+
+        new Chart(modCtx, {
+            type: 'bar',
+            data: {
+                labels: moduleLabels,
+                datasets: [{
+                    label: 'Findings',
+                    data: moduleValues,
+                    backgroundColor: [
+                        'rgba(102, 126, 234, 0.7)',
+                        'rgba(118, 75, 162, 0.7)',
+                        'rgba(255, 171, 0, 0.7)',
+                        'rgba(0, 229, 255, 0.7)',
+                        'rgba(255, 23, 68, 0.7)',
+                        'rgba(83, 109, 254, 0.7)'
+                    ],
+                    borderColor: [
+                        '#667eea',
+                        '#764ba2',
+                        '#ffab00',
+                        '#00e5ff',
+                        '#ff1744',
+                        '#536dfe'
+                    ],
+                    borderWidth: 1,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#a0a0b8', stepSize: 1 },
+                        grid: { color: 'rgba(255,255,255,0.06)' }
+                    },
+                    x: {
+                        ticks: { color: '#a0a0b8', maxRotation: 45 },
+                        grid: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,293 @@
+# ============================================================================
+# Vulnerability Scanner - Configuration
+# ============================================================================
+# LEGAL DISCLAIMER: This tool is intended for authorized security testing ONLY.
+# Unauthorized use against systems you do not own or have written permission
+# to test is ILLEGAL and punishable by law. Always obtain proper authorization.
+# ============================================================================
+
+# --- General Settings ---
+general:
+  default_threads: 10          # Number of concurrent scanning threads
+  timeout: 5                   # Global socket timeout in seconds
+  verbose: true                # Enable verbose logging output
+  output_dir: "./output"       # Default output directory for reports
+
+# --- Port Scanner Settings ---
+port_scanner:
+  # Common ports to scan by default (top 100 most common)
+  default_ports:
+    - 21    # FTP
+    - 22    # SSH
+    - 23    # Telnet
+    - 25    # SMTP
+    - 53    # DNS
+    - 80    # HTTP
+    - 110   # POP3
+    - 111   # RPCbind
+    - 135   # MSRPC
+    - 139   # NetBIOS
+    - 143   # IMAP
+    - 443   # HTTPS
+    - 445   # SMB
+    - 993   # IMAPS
+    - 995   # POP3S
+    - 1433  # MSSQL
+    - 1521  # Oracle
+    - 2049  # NFS
+    - 3306  # MySQL
+    - 3389  # RDP
+    - 5432  # PostgreSQL
+    - 5900  # VNC
+    - 6379  # Redis
+    - 8080  # HTTP Proxy
+    - 8443  # HTTPS Alt
+    - 8888  # HTTP Alt
+    - 9090  # Web Admin
+    - 27017 # MongoDB
+  scan_type: "connect"         # "syn" (requires admin/root) or "connect"
+  banner_timeout: 3            # Timeout for banner grabbing in seconds
+  max_retries: 2               # Retries for unresponsive ports
+
+# --- Service Detection ---
+service_detector:
+  # Known service signature patterns (regex)
+  signatures:
+    - pattern: "SSH-([\\d.]+)-OpenSSH_([\\w.]+)"
+      service: "OpenSSH"
+      version_group: 2
+    - pattern: "220.*FileZilla Server.*?([\\d.]+)"
+      service: "FileZilla FTP"
+      version_group: 1
+    - pattern: "220.*vsftpd ([\\d.]+)"
+      service: "vsftpd"
+      version_group: 1
+    - pattern: "220.*ProFTPD ([\\d.]+)"
+      service: "ProFTPD"
+      version_group: 1
+    - pattern: "220.*Pure-FTPd"
+      service: "Pure-FTPd"
+      version_group: 0
+    - pattern: "Server: Apache/([\\d.]+)"
+      service: "Apache HTTP Server"
+      version_group: 1
+    - pattern: "Server: nginx/([\\d.]+)"
+      service: "nginx"
+      version_group: 1
+    - pattern: "Server: Microsoft-IIS/([\\d.]+)"
+      service: "Microsoft IIS"
+      version_group: 1
+    - pattern: "MySQL.*?([\\d.]+)"
+      service: "MySQL"
+      version_group: 1
+    - pattern: "PostgreSQL.*?([\\d.]+)"
+      service: "PostgreSQL"
+      version_group: 1
+    - pattern: "Redis.*?([\\d.]+)"
+      service: "Redis"
+      version_group: 1
+    - pattern: "MongoDB.*?([\\d.]+)"
+      service: "MongoDB"
+      version_group: 1
+
+# --- Web Scanner Settings ---
+web_scanner:
+  user_agent: "VulnScanner/1.0 (Security Audit)"
+  max_depth: 2                  # Max crawl depth for link discovery
+  request_delay: 0.5            # Delay between requests in seconds
+  follow_redirects: false       # Follow HTTP redirects during testing
+  
+  # SQL Injection test payloads
+  sqli_payloads:
+    - "' OR '1'='1"
+    - "' OR '1'='1' --"
+    - "' OR '1'='1' /*"
+    - "1' ORDER BY 1--"
+    - "1' UNION SELECT NULL--"
+    - "'; DROP TABLE users--"
+    - "' AND 1=1--"
+    - "' AND 1=2--"
+    - "admin'--"
+    - "1; WAITFOR DELAY '0:0:5'--"
+
+  # SQL error signatures in responses
+  sqli_errors:
+    - "you have an error in your sql syntax"
+    - "warning: mysql"
+    - "unclosed quotation mark"
+    - "quoted string not properly terminated"
+    - "microsoft ole db provider for sql server"
+    - "ora-01756"
+    - "postgresql.*error"
+    - "sqlite3.operationalerror"
+    - "pg_query"
+    - "syntax error at or near"
+
+  # XSS test payloads
+  xss_payloads:
+    - "<script>alert('XSS')</script>"
+    - "<img src=x onerror=alert('XSS')>"
+    - "<svg onload=alert('XSS')>"
+    - "'\"><script>alert('XSS')</script>"
+    - "<body onload=alert('XSS')>"
+    - "<iframe src='javascript:alert(1)'>"
+    - "<input onfocus=alert(1) autofocus>"
+    - "javascript:alert('XSS')"
+
+  # Open redirect test payloads
+  redirect_payloads:
+    - "//evil.com"
+    - "https://evil.com"
+    - "//evil.com/%2f%2e%2e"
+    - "/\\evil.com"
+    - "////evil.com"
+    - "https:evil.com"
+
+  # Directory traversal payloads
+  traversal_payloads:
+    - "../../../etc/passwd"
+    - "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts"
+    - "....//....//....//etc/passwd"
+    - "%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd"
+    - "..%252f..%252f..%252fetc%252fpasswd"
+    - "/etc/passwd%00"
+
+  # Common directories to brute-force
+  common_dirs:
+    - "/admin"
+    - "/login"
+    - "/dashboard"
+    - "/wp-admin"
+    - "/wp-login.php"
+    - "/administrator"
+    - "/phpmyadmin"
+    - "/console"
+    - "/.git"
+    - "/.env"
+    - "/robots.txt"
+    - "/sitemap.xml"
+    - "/api"
+    - "/swagger"
+    - "/backup"
+    - "/config"
+    - "/server-status"
+    - "/server-info"
+
+# --- SSL/TLS Checker Settings ---
+ssl_checker:
+  check_expiry: true
+  check_self_signed: true
+  check_weak_ciphers: true
+  check_protocols: true
+  
+  # Ciphers considered weak/insecure
+  weak_ciphers:
+    - "RC4"
+    - "DES"
+    - "3DES"
+    - "MD5"
+    - "NULL"
+    - "EXPORT"
+    - "anon"
+    - "RC2"
+
+  # Deprecated/insecure TLS protocol versions
+  deprecated_protocols:
+    - "SSLv2"
+    - "SSLv3"
+    - "TLSv1.0"
+    - "TLSv1.1"
+
+# --- Default Credentials Checker ---
+creds_checker:
+  # SSH default credentials
+  ssh_creds:
+    - username: "root"
+      password: "root"
+    - username: "root"
+      password: "toor"
+    - username: "root"
+      password: "password"
+    - username: "admin"
+      password: "admin"
+    - username: "admin"
+      password: "password"
+    - username: "admin"
+      password: "123456"
+    - username: "user"
+      password: "user"
+    - username: "test"
+      password: "test"
+    - username: "guest"
+      password: "guest"
+    - username: "pi"
+      password: "raspberry"
+
+  # FTP default credentials
+  ftp_creds:
+    - username: "anonymous"
+      password: ""
+    - username: "anonymous"
+      password: "anonymous@"
+    - username: "ftp"
+      password: "ftp"
+    - username: "admin"
+      password: "admin"
+    - username: "root"
+      password: "root"
+    - username: "user"
+      password: "user"
+
+  # Telnet default credentials
+  telnet_creds:
+    - username: "admin"
+      password: "admin"
+    - username: "root"
+      password: "root"
+    - username: "user"
+      password: "user"
+    - username: "guest"
+      password: "guest"
+    - username: "admin"
+      password: "password"
+    - username: "admin"
+      password: "1234"
+
+  # HTTP admin panel default credentials
+  http_creds:
+    - username: "admin"
+      password: "admin"
+    - username: "admin"
+      password: "password"
+    - username: "admin"
+      password: "123456"
+    - username: "root"
+      password: "root"
+    - username: "administrator"
+      password: "administrator"
+    - username: "admin"
+      password: ""
+    - username: "user"
+      password: "user"
+
+  # HTTP login paths to try
+  http_login_paths:
+    - "/login"
+    - "/admin/login"
+    - "/wp-login.php"
+    - "/administrator"
+    - "/auth/login"
+    - "/user/login"
+
+# --- CVE Database ---
+cve_database:
+  snapshot_path: "./data/cve_snapshot.json"
+  auto_update: false            # Disabled - use local snapshot only
+
+# --- Report Settings ---
+report:
+  company_name: "Security Audit Report"
+  author: "VulnScanner Automated Tool"
+  include_charts: true
+  include_raw_data: true
+  template_path: "./templates/report.html"

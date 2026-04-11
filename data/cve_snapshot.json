@@ -1,0 +1,191 @@
+[
+  {
+    "cve_id": "CVE-2024-6387",
+    "service": "OpenSSH",
+    "affected_versions": {"min": "8.5", "max": "9.7"},
+    "severity": "Critical",
+    "cvss_score": 8.1,
+    "description": "RegreSSHion: Remote Code Execution vulnerability in OpenSSH server (sshd) due to signal handler race condition.",
+    "remediation": "Upgrade to OpenSSH 9.8 or later."
+  },
+  {
+    "cve_id": "CVE-2023-48795",
+    "service": "OpenSSH",
+    "affected_versions": {"min": "0.0", "max": "9.5"},
+    "severity": "Medium",
+    "cvss_score": 5.9,
+    "description": "Terrapin Attack: Prefix truncation attack on SSH Binary Packet Protocol (BPP) allowing message integrity bypass.",
+    "remediation": "Upgrade to OpenSSH 9.6 or later and disable affected ciphers."
+  },
+  {
+    "cve_id": "CVE-2023-25136",
+    "service": "OpenSSH",
+    "affected_versions": {"min": "9.1", "max": "9.1"},
+    "severity": "Medium",
+    "cvss_score": 6.5,
+    "description": "Double-free vulnerability in OpenSSH server 9.1 allowing memory corruption.",
+    "remediation": "Upgrade to OpenSSH 9.2 or later."
+  },
+  {
+    "cve_id": "CVE-2024-53677",
+    "service": "Apache HTTP Server",
+    "affected_versions": {"min": "2.4.0", "max": "2.4.58"},
+    "severity": "High",
+    "cvss_score": 7.5,
+    "description": "HTTP/2 CONTINUATION flood vulnerability causing denial of service via memory exhaustion.",
+    "remediation": "Upgrade to Apache HTTP Server 2.4.59 or later."
+  },
+  {
+    "cve_id": "CVE-2023-44487",
+    "service": "Apache HTTP Server",
+    "affected_versions": {"min": "2.4.17", "max": "2.4.57"},
+    "severity": "High",
+    "cvss_score": 7.5,
+    "description": "HTTP/2 Rapid Reset Attack allowing denial of service.",
+    "remediation": "Upgrade to Apache HTTP Server 2.4.58 or later."
+  },
+  {
+    "cve_id": "CVE-2023-25690",
+    "service": "Apache HTTP Server",
+    "affected_versions": {"min": "2.4.0", "max": "2.4.55"},
+    "severity": "Critical",
+    "cvss_score": 9.8,
+    "description": "HTTP request smuggling via mod_proxy when RewriteRule and ProxyPassMatch are used.",
+    "remediation": "Upgrade to Apache HTTP Server 2.4.56 or later."
+  },
+  {
+    "cve_id": "CVE-2024-24989",
+    "service": "nginx",
+    "affected_versions": {"min": "1.25.0", "max": "1.25.3"},
+    "severity": "High",
+    "cvss_score": 7.5,
+    "description": "NULL pointer dereference in HTTP/3 module causing worker process crash.",
+    "remediation": "Upgrade to nginx 1.25.4 or later."
+  },
+  {
+    "cve_id": "CVE-2023-44487",
+    "service": "nginx",
+    "affected_versions": {"min": "1.9.5", "max": "1.25.2"},
+    "severity": "High",
+    "cvss_score": 7.5,
+    "description": "HTTP/2 Rapid Reset Attack allowing denial of service.",
+    "remediation": "Upgrade to nginx 1.25.3 or later."
+  },
+  {
+    "cve_id": "CVE-2024-3094",
+    "service": "OpenSSH",
+    "affected_versions": {"min": "9.4", "max": "9.5"},
+    "severity": "Critical",
+    "cvss_score": 10.0,
+    "description": "XZ Utils backdoor (liblzma) affecting SSH authentication bypass on certain Linux distributions.",
+    "remediation": "Downgrade xz-utils to 5.4.x or upgrade to a patched version. Verify system integrity."
+  },
+  {
+    "cve_id": "CVE-2023-36884",
+    "service": "Microsoft IIS",
+    "affected_versions": {"min": "7.0", "max": "10.0"},
+    "severity": "High",
+    "cvss_score": 8.8,
+    "description": "Remote code execution vulnerability exploitable via specially crafted documents.",
+    "remediation": "Apply latest Microsoft security updates."
+  },
+  {
+    "cve_id": "CVE-2024-21733",
+    "service": "Apache HTTP Server",
+    "affected_versions": {"min": "2.4.0", "max": "2.4.56"},
+    "severity": "Medium",
+    "cvss_score": 5.3,
+    "description": "Incomplete POST request information disclosure vulnerability.",
+    "remediation": "Upgrade to Apache HTTP Server 2.4.57 or later."
+  },
+  {
+    "cve_id": "CVE-2023-3824",
+    "service": "vsftpd",
+    "affected_versions": {"min": "2.0.0", "max": "3.0.3"},
+    "severity": "High",
+    "cvss_score": 7.5,
+    "description": "vsftpd vulnerable to denial of service via crafted FTP commands.",
+    "remediation": "Upgrade to vsftpd 3.0.5 or later."
+  },
+  {
+    "cve_id": "CVE-2023-45871",
+    "service": "ProFTPD",
+    "affected_versions": {"min": "1.3.0", "max": "1.3.8"},
+    "severity": "High",
+    "cvss_score": 7.5,
+    "description": "Remote code execution vulnerability in mod_copy module.",
+    "remediation": "Upgrade to ProFTPD 1.3.8b or later, or disable mod_copy."
+  },
+  {
+    "cve_id": "CVE-2023-31248",
+    "service": "MySQL",
+    "affected_versions": {"min": "5.7.0", "max": "8.0.33"},
+    "severity": "Medium",
+    "cvss_score": 6.5,
+    "description": "Privilege escalation vulnerability in MySQL Server component.",
+    "remediation": "Upgrade to MySQL 8.0.34 or later."
+  },
+  {
+    "cve_id": "CVE-2023-22008",
+    "service": "MySQL",
+    "affected_versions": {"min": "8.0.0", "max": "8.0.33"},
+    "severity": "Medium",
+    "cvss_score": 4.9,
+    "description": "Denial of service vulnerability in InnoDB storage engine.",
+    "remediation": "Upgrade to MySQL 8.0.34 or later."
+  },
+  {
+    "cve_id": "CVE-2023-5868",
+    "service": "PostgreSQL",
+    "affected_versions": {"min": "12.0", "max": "16.0"},
+    "severity": "Medium",
+    "cvss_score": 4.3,
+    "description": "Memory disclosure in aggregate function calls allowing information leakage.",
+    "remediation": "Upgrade to PostgreSQL 16.1 or the latest minor release."
+  },
+  {
+    "cve_id": "CVE-2024-28102",
+    "service": "Redis",
+    "affected_versions": {"min": "6.0.0", "max": "7.2.3"},
+    "severity": "High",
+    "cvss_score": 8.8,
+    "description": "Authenticated remote code execution via specially crafted SORT_RO commands.",
+    "remediation": "Upgrade to Redis 7.2.4 or later."
+  },
+  {
+    "cve_id": "CVE-2023-41056",
+    "service": "Redis",
+    "affected_versions": {"min": "7.0.0", "max": "7.0.14"},
+    "severity": "High",
+    "cvss_score": 8.1,
+    "description": "Heap overflow vulnerability potentially leading to RCE during cluster resharding.",
+    "remediation": "Upgrade to Redis 7.0.15 or 7.2.4 or later."
+  },
+  {
+    "cve_id": "CVE-2024-4367",
+    "service": "MongoDB",
+    "affected_versions": {"min": "4.4.0", "max": "7.0.5"},
+    "severity": "High",
+    "cvss_score": 7.5,
+    "description": "Server crash due to malformed BSON object in aggregation pipeline.",
+    "remediation": "Upgrade to MongoDB 7.0.6 or later."
+  },
+  {
+    "cve_id": "CVE-2023-1409",
+    "service": "MongoDB",
+    "affected_versions": {"min": "5.0.0", "max": "6.3.1"},
+    "severity": "Medium",
+    "cvss_score": 5.3,
+    "description": "TLS certificate validation bypass allowing connection to untrusted servers.",
+    "remediation": "Upgrade to MongoDB 6.3.2 or 7.0.0 or later."
+  },
+  {
+    "cve_id": "CVE-2023-46604",
+    "service": "FileZilla FTP",
+    "affected_versions": {"min": "0.9.0", "max": "1.7.2"},
+    "severity": "Medium",
+    "cvss_score": 5.0,
+    "description": "Information disclosure via verbose error messages in certain configurations.",
+    "remediation": "Upgrade to FileZilla Server 1.8.0 or later."
+  }
+]
