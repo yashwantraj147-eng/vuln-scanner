@@ -2,7 +2,7 @@
 # Python 3.10+ required
 
 scapy>=2.5.0                # Packet crafting for SYN scanning
-paramiko>=3.4.0             # SSH client for credential checking
+paramiko>=5.1.0             # SSH client for credential checking
 requests>=2.31.0            # HTTP requests for web scanning
 Jinja2>=3.1.2               # HTML report templating
 PyYAML>=6.0.1               # Configuration file parsing
