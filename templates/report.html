@@ -294,12 +294,30 @@
                 <h3>📊 Findings by Severity</h3>
                 <div class="chart-wrapper">
                     <canvas id="severityChart"></canvas>
+                    <div id="severityFallback" class="offline-fallback" style="display:none; padding:15px; font-size:0.9rem;">
+                        <div style="margin-bottom:12px;"><strong>Offline Fallback Display</strong></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Critical</span><span>{{ severity_counts.critical }}</span></div>
+                        <div style="background:rgba(255,255,255,0.08); border-radius:4px; height:8px; margin-bottom:10px;"><div style="width:{{ (severity_counts.critical / (total_findings or 1) * 100)|round }}%; background:var(--critical); height:100%;"></div></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>High</span><span>{{ severity_counts.high }}</span></div>
+                        <div style="background:rgba(255,255,255,0.08); border-radius:4px; height:8px; margin-bottom:10px;"><div style="width:{{ (severity_counts.high / (total_findings or 1) * 100)|round }}%; background:var(--high); height:100%;"></div></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Medium</span><span>{{ severity_counts.medium }}</span></div>
+                        <div style="background:rgba(255,255,255,0.08); border-radius:4px; height:8px; margin-bottom:10px;"><div style="width:{{ (severity_counts.medium / (total_findings or 1) * 100)|round }}%; background:var(--medium); height:100%;"></div></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Low</span><span>{{ severity_counts.low }}</span></div>
+                        <div style="background:rgba(255,255,255,0.08); border-radius:4px; height:8px; margin-bottom:10px;"><div style="width:{{ (severity_counts.low / (total_findings or 1) * 100)|round }}%; background:var(--low); height:100%;"></div></div>
+                    </div>
                 </div>
             </div>
             <div class="chart-card">
                 <h3>📊 Findings by Module</h3>
                 <div class="chart-wrapper">
                     <canvas id="moduleChart"></canvas>
+                    <div id="moduleFallback" class="offline-fallback" style="display:none; padding:15px; font-size:0.9rem;">
+                        <div style="margin-bottom:12px;"><strong>Offline Fallback Display</strong></div>
+                        {% for mod, count in module_counts.items() %}
+                        <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>{{ mod }}</span><span>{{ count }}</span></div>
+                        <div style="background:rgba(255,255,255,0.08); border-radius:4px; height:8px; margin-bottom:10px;"><div style="width:{{ (count / (total_findings or 1) * 100)|round }}%; background:var(--text-accent); height:100%;"></div></div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -441,100 +459,110 @@
 
     <!-- ===== CHART.JS SCRIPTS ===== -->
     <script>
-        // --- Severity Doughnut Chart ---
-        const sevCtx = document.getElementById('severityChart').getContext('2d');
-        new Chart(sevCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Critical', 'High', 'Medium', 'Low', 'Info'],
-                datasets: [{
-                    data: [
-                        {{ severity_counts.critical }},
-                        {{ severity_counts.high }},
-                        {{ severity_counts.medium }},
-                        {{ severity_counts.low }},
-                        {{ severity_counts.info }}
-                    ],
-                    backgroundColor: [
-                        '#ff1744',
-                        '#ff6d00',
-                        '#ffab00',
-                        '#00e5ff',
-                        '#536dfe'
-                    ],
-                    borderColor: '#16213e',
-                    borderWidth: 3
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            color: '#e0e0e0',
-                            padding: 16,
-                            usePointStyle: true,
-                            pointStyleWidth: 12
+        if (typeof Chart !== 'undefined') {
+            // --- Severity Doughnut Chart ---
+            const sevCtx = document.getElementById('severityChart').getContext('2d');
+            new Chart(sevCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Critical', 'High', 'Medium', 'Low', 'Info'],
+                    datasets: [{
+                        data: [
+                            {{ severity_counts.critical }},
+                            {{ severity_counts.high }},
+                            {{ severity_counts.medium }},
+                            {{ severity_counts.low }},
+                            {{ severity_counts.info }}
+                        ],
+                        backgroundColor: [
+                            '#ff1744',
+                            '#ff6d00',
+                            '#ffab00',
+                            '#00e5ff',
+                            '#536dfe'
+                        ],
+                        borderColor: '#16213e',
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#e0e0e0',
+                                padding: 16,
+                                usePointStyle: true,
+                                pointStyleWidth: 12
+                            }
                         }
-                    }
-                },
-                cutout: '55%'
-            }
-        });
-
-        // --- Module Bar Chart ---
-        const modCtx = document.getElementById('moduleChart').getContext('2d');
-        const moduleLabels = {{ module_counts.keys()|list|tojson }};
-        const moduleValues = {{ module_counts.values()|list|tojson }};
-
-        new Chart(modCtx, {
-            type: 'bar',
-            data: {
-                labels: moduleLabels,
-                datasets: [{
-                    label: 'Findings',
-                    data: moduleValues,
-                    backgroundColor: [
-                        'rgba(102, 126, 234, 0.7)',
-                        'rgba(118, 75, 162, 0.7)',
-                        'rgba(255, 171, 0, 0.7)',
-                        'rgba(0, 229, 255, 0.7)',
-                        'rgba(255, 23, 68, 0.7)',
-                        'rgba(83, 109, 254, 0.7)'
-                    ],
-                    borderColor: [
-                        '#667eea',
-                        '#764ba2',
-                        '#ffab00',
-                        '#00e5ff',
-                        '#ff1744',
-                        '#536dfe'
-                    ],
-                    borderWidth: 1,
-                    borderRadius: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { color: '#a0a0b8', stepSize: 1 },
-                        grid: { color: 'rgba(255,255,255,0.06)' }
                     },
-                    x: {
-                        ticks: { color: '#a0a0b8', maxRotation: 45 },
-                        grid: { display: false }
-                    }
-                },
-                plugins: {
-                    legend: { display: false }
+                    cutout: '55%'
                 }
-            }
-        });
+            });
+
+            // --- Module Bar Chart ---
+            const modCtx = document.getElementById('moduleChart').getContext('2d');
+            const moduleLabels = {{ module_counts.keys()|list|tojson }};
+            const moduleValues = {{ module_counts.values()|list|tojson }};
+
+            new Chart(modCtx, {
+                type: 'bar',
+                data: {
+                    labels: moduleLabels,
+                    datasets: [{
+                        label: 'Findings',
+                        data: moduleValues,
+                        backgroundColor: [
+                            'rgba(102, 126, 234, 0.7)',
+                            'rgba(118, 75, 162, 0.7)',
+                            'rgba(255, 171, 0, 0.7)',
+                            'rgba(0, 229, 255, 0.7)',
+                            'rgba(255, 23, 68, 0.7)',
+                            'rgba(83, 109, 254, 0.7)'
+                        ],
+                        borderColor: [
+                            '#667eea',
+                            '#764ba2',
+                            '#ffab00',
+                            '#00e5ff',
+                            '#ff1744',
+                            '#536dfe'
+                        ],
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#a0a0b8', stepSize: 1 },
+                            grid: { color: 'rgba(255,255,255,0.06)' }
+                        },
+                        x: {
+                            ticks: { color: '#a0a0b8', maxRotation: 45 },
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        } else {
+            // Offline fallback: hide canvas elements, show styled fallback bars
+            document.querySelectorAll('canvas').forEach(function(canvas) {
+                canvas.style.display = 'none';
+            });
+            document.querySelectorAll('.offline-fallback').forEach(function(fallback) {
+                fallback.style.display = 'block';
+            });
+        }
     </script>
 </body>
 </html>

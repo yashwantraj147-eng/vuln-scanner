@@ -1,9 +1,12 @@
 # VulnScanner 🛡️
 
-> **A comprehensive, multi-threaded vulnerability scanner built in Python for authorized security assessments.**
+> **An industry-grade, multi-threaded vulnerability assessment scanner built in Python for authorized security audits.**
 
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Python 3.10 - 3.13+](https://img.shields.io/badge/python-3.10%20--%203.13%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![CI Pipeline](https://img.shields.io/badge/CI-GitHub%20Actions-brightgreen)
+![Docker Ready](https://img.shields.io/badge/docker-ready-blue)
+![SARIF v2.1.0](https://img.shields.io/badge/output-SARIF%20%7C%20HTML%20%7C%20CSV%20%7C%20JSON-orange)
 
 ---
 
@@ -23,36 +26,47 @@
 
 | Module | Description |
 |--------|-------------|
-| **Port Scanner** | TCP SYN scan (Scapy) + TCP Connect scan with banner grabbing |
-| **Service Detector** | Regex-based service/version fingerprinting from banners |
-| **CVE Matcher** | Local CVE JSON database matching with semantic version comparison |
-| **Web Scanner** | SQLi, XSS, Open Redirect, Directory Traversal, sensitive dir discovery |
-| **SSL/TLS Checker** | Expired certs, self-signed certs, weak ciphers, deprecated protocols |
-| **Creds Checker** | Default credential testing for SSH, FTP, Telnet, HTTP admin panels |
-| **Report Generator** | Professional HTML reports with Chart.js charts + JSON data export |
+| **Port Scanner** | Multi-threaded TCP Connect & SYN scans with SSL-aware banner grabbing on TLS ports |
+| **Service Detector** | Banner fingerprinting with regex signatures (OpenSSH, Apache, Nginx, Redis, Docker, etc.) |
+| **CVE Matcher** | Local CVE database, CISA KEV (Known Exploited Vulnerabilities) live feed & OSV.dev lookup |
+| **Web Scanner** | SQLi (error & time-based blind), XSS, Traversal, Redirects, Security Headers (CSP/HSTS), CORS, Cookies |
+| **SSL/TLS Checker** | Certificate expiration, self-signed detection, SAN validation, weak ciphers, TLS 1.0–1.3 audits |
+| **Creds Checker** | Pure socket Telnet (Python 3.13+ ready), SSH, FTP, HTTP forms/basic auth, Redis unauthenticated probes |
+| **Report Generator** | Dark-themed HTML reports with offline fallback, JSON export, CSV audit sheets, and SARIF v2.1.0 |
 
 ---
 
-## 📦 Installation
+## 📦 Installation & Setup
 
 ### Prerequisites
-- Python 3.10 or higher
-- pip (Python package manager)
-- Administrator/root privileges (for SYN scanning only)
+- Python 3.10 to 3.13+
+- pip (Python package manager) or Docker
 
-### Setup
+### Local Installation
 
 ```bash
-# Clone or download the project
+# Clone the repository
+git clone https://github.com/your-username/vuln_scanner.git
 cd vuln_scanner
 
-# Create a virtual environment (recommended)
+# Create and activate virtual environment
 python -m venv venv
 source venv/bin/activate        # Linux/macOS
 # venv\Scripts\activate         # Windows
 
-# Install dependencies
+# Install in editable mode
 pip install -r requirements.txt
+pip install -e .
+```
+
+### Docker Execution (Zero Setup)
+
+```bash
+# Build the container
+docker build -t vulnscanner .
+
+# Run a scan and mount the output folder for reports
+docker run --rm -v $(pwd)/output:/app/output vulnscanner --target 127.0.0.1 --csv --sarif
 ```
 
 ---
@@ -84,6 +98,8 @@ python main.py --target 127.0.0.1 --threads 20 --output ./my_reports
 | `--verbose` | `-v` | false | Enable debug logging |
 | `--no-report` | | false | Skip report generation |
 | `--json-only` | | false | Generate JSON only (no HTML) |
+| `--csv` | | false | Generate CSV export of findings |
+| `--sarif` | | false | Generate SARIF v2.1.0 report for CI/CD |
 
 ### Available Modules
 
@@ -120,33 +136,41 @@ python main.py --target 127.0.0.1 --json-only
 
 ```
 vuln_scanner/
-├── main.py                    # CLI entry point and orchestrator
+├── .github/
+│   └── workflows/ci.yml       # Multi-OS matrix CI/CD pipeline
+├── main.py                    # CLI entry point with Rich terminal UI
 ├── config.yaml                # Configuration (ports, payloads, credentials)
+├── pyproject.toml             # Modern PEP 517/621 packaging & tool config
 ├── requirements.txt           # Python dependencies
-├── README.md                  # This file
+├── Dockerfile                 # Production multi-stage Docker container
+├── Makefile                   # Automation commands (test, lint, coverage)
+├── README.md                  # Documentation and quickstart
+├── SECURITY.md                # Responsible vulnerability disclosure policy
+├── CONTRIBUTING.md            # Contributor guidelines and workflow
+├── LICENSE                    # MIT License
 │
 ├── scanner/                   # Scanning modules package
 │   ├── __init__.py
-│   ├── port_scanner.py        # TCP SYN/Connect port scanner
-│   ├── service_detector.py    # Banner-based service fingerprinting
-│   ├── web_scanner.py         # Web vulnerability scanner
-│   ├── ssl_checker.py         # SSL/TLS configuration checker
-│   └── creds_checker.py       # Default credentials checker
+│   ├── port_scanner.py        # Multi-threaded TCP port scanner with TLS probing
+│   ├── service_detector.py    # Regex banner fingerprinting engine
+│   ├── web_scanner.py         # Web vulnerability engine (OWASP, CSP, CORS, SQLi)
+│   ├── ssl_checker.py         # SSL/TLS certificate & cipher analyzer (TLS 1.0-1.3)
+│   └── creds_checker.py       # Socket Telnet (Python 3.13+), SSH, FTP, Redis checks
 │
-├── cve_matcher.py             # CVE database matching engine
-├── report_generator.py        # HTML + JSON report generator
+├── cve_matcher.py             # CVE matcher with CISA KEV & OSV.dev live lookups
+├── report_generator.py        # Report engine (HTML, JSON, CSV, SARIF v2.1.0)
 │
 ├── templates/
-│   └── report.html            # Jinja2 HTML report template (Chart.js)
+│   └── report.html            # Jinja2 HTML report with air-gapped CSS fallback
 │
 ├── data/
 │   └── cve_snapshot.json      # Local CVE database snapshot
 │
 ├── tests/
 │   ├── __init__.py
-│   └── test_scanner.py        # Comprehensive test suite
+│   └── test_scanner.py        # Comprehensive test suite (62 test cases)
 │
-└── output/                    # Generated reports directory
+└── output/                    # Generated audit reports (.html, .json, .csv, .sarif)
 ```
 
 ---

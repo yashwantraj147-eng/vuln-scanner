@@ -9,6 +9,7 @@ written permission to test. Unauthorized scanning is illegal.
 """
 
 import socket
+import ssl
 import logging
 import ipaddress
 from typing import Optional
@@ -198,7 +199,23 @@ class PortScanner:
             sock.connect((ip, port))
 
             # Some services require a probe to trigger a banner response
-            if port in (80, 443, 8080, 8443, 8888, 9090):
+            if port in (443, 8443):
+                # For SSL/TLS web ports, negotiate TLS before sending HTTP HEAD
+                try:
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+                    with ctx.wrap_socket(sock, server_hostname=ip) as tls_sock:
+                        http_request = (
+                            f"HEAD / HTTP/1.1\r\nHost: {ip}\r\n"
+                            f"User-Agent: VulnScanner/1.0\r\n"
+                            f"Connection: close\r\n\r\n"
+                        )
+                        tls_sock.sendall(http_request.encode())
+                        return tls_sock.recv(4096).decode("utf-8", errors="replace").strip()
+                except Exception:
+                    pass
+            elif port in (80, 8080, 8888, 9090):
                 # Send an HTTP HEAD request to elicit server header
                 http_request = (
                     f"HEAD / HTTP/1.1\r\nHost: {ip}\r\n"

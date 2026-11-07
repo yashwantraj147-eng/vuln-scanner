@@ -40,6 +40,14 @@ from datetime import datetime, timezone
 import yaml
 from colorama import init, Fore, Style
 
+try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
 from scanner.port_scanner import PortScanner
 from scanner.service_detector import ServiceDetector
 from scanner.web_scanner import WebScanner
@@ -153,6 +161,16 @@ def parse_args() -> argparse.Namespace:
         "--json-only",
         action="store_true",
         help="Generate JSON report only (no HTML)"
+    )
+    parser.add_argument(
+        "--csv",
+        action="store_true",
+        help="Generate CSV export of findings"
+    )
+    parser.add_argument(
+        "--sarif",
+        action="store_true",
+        help="Generate SARIF report for CI/CD integration"
     )
 
     return parser.parse_args()
@@ -347,17 +365,7 @@ def main():
     # RESULTS SUMMARY
     # =================================================================
     scan_duration = time.time() - scan_start
-
     total_findings = sum(len(f) for f in all_findings.values())
-
-    print(f"\n{Fore.GREEN}{'═'*60}")
-    print(f"  SCAN COMPLETE")
-    print(f"{'═'*60}{Style.RESET_ALL}")
-    print(f"  Target:        {args.target}")
-    print(f"  Duration:      {scan_duration:.1f} seconds")
-    print(f"  Open Ports:    {len(port_results)}")
-    print(f"  Services:      {len(service_results)}")
-    print(f"  Findings:      {total_findings}")
 
     # Severity breakdown
     severity_summary = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
@@ -366,20 +374,58 @@ def main():
             sev = finding.get("severity", "Info")
             severity_summary[sev] = severity_summary.get(sev, 0) + 1
 
-    if total_findings > 0:
-        print(f"\n  Severity Breakdown:")
-        if severity_summary["Critical"]:
-            print(f"    {Fore.RED}  Critical: {severity_summary['Critical']}{Style.RESET_ALL}")
-        if severity_summary["High"]:
-            print(f"    {Fore.YELLOW}  High:     {severity_summary['High']}{Style.RESET_ALL}")
-        if severity_summary["Medium"]:
-            print(f"    {Fore.LIGHTYELLOW_EX}  Medium:   {severity_summary['Medium']}{Style.RESET_ALL}")
-        if severity_summary["Low"]:
-            print(f"    {Fore.CYAN}  Low:      {severity_summary['Low']}{Style.RESET_ALL}")
-        if severity_summary["Info"]:
-            print(f"    {Fore.BLUE}  Info:     {severity_summary['Info']}{Style.RESET_ALL}")
+    if RICH_AVAILABLE:
+        console = Console()
+        console.print()
+        summary_table = Table(title="🛡️ VulnScanner — Scan Complete", border_style="bright_blue")
+        summary_table.add_column("Parameter", style="bold cyan", width=20)
+        summary_table.add_column("Details", style="bold white", width=36)
+        summary_table.add_row("Target", str(args.target))
+        summary_table.add_row("Scan Duration", f"{scan_duration:.1f} seconds")
+        summary_table.add_row("Open Ports", str(len(port_results)))
+        summary_table.add_row("Detected Services", str(len(service_results)))
+        summary_table.add_row("Total Findings", str(total_findings))
+        console.print(summary_table)
 
-    print(f"{'═'*60}")
+        if total_findings > 0:
+            sev_table = Table(title="Severity Breakdown", border_style="yellow")
+            sev_table.add_column("Severity Level", style="bold", width=18)
+            sev_table.add_column("Count", justify="right", width=10)
+            if severity_summary["Critical"]:
+                sev_table.add_row("[bold red]Critical[/bold red]", f"[bold red]{severity_summary['Critical']}[/bold red]")
+            if severity_summary["High"]:
+                sev_table.add_row("[bold dark_orange]High[/bold dark_orange]", f"[bold dark_orange]{severity_summary['High']}[/bold dark_orange]")
+            if severity_summary["Medium"]:
+                sev_table.add_row("[bold yellow]Medium[/bold yellow]", str(severity_summary["Medium"]))
+            if severity_summary["Low"]:
+                sev_table.add_row("[bold cyan]Low[/bold cyan]", str(severity_summary["Low"]))
+            if severity_summary["Info"]:
+                sev_table.add_row("[bold blue]Info[/bold blue]", str(severity_summary["Info"]))
+            console.print(sev_table)
+    else:
+        print(f"\n{Fore.GREEN}{'═'*60}")
+        print(f"  SCAN COMPLETE")
+        print(f"{'═'*60}{Style.RESET_ALL}")
+        print(f"  Target:        {args.target}")
+        print(f"  Duration:      {scan_duration:.1f} seconds")
+        print(f"  Open Ports:    {len(port_results)}")
+        print(f"  Services:      {len(service_results)}")
+        print(f"  Findings:      {total_findings}")
+
+        if total_findings > 0:
+            print(f"\n  Severity Breakdown:")
+            if severity_summary["Critical"]:
+                print(f"    {Fore.RED}  Critical: {severity_summary['Critical']}{Style.RESET_ALL}")
+            if severity_summary["High"]:
+                print(f"    {Fore.YELLOW}  High:     {severity_summary['High']}{Style.RESET_ALL}")
+            if severity_summary["Medium"]:
+                print(f"    {Fore.LIGHTYELLOW_EX}  Medium:   {severity_summary['Medium']}{Style.RESET_ALL}")
+            if severity_summary["Low"]:
+                print(f"    {Fore.CYAN}  Low:      {severity_summary['Low']}{Style.RESET_ALL}")
+            if severity_summary["Info"]:
+                print(f"    {Fore.BLUE}  Info:     {severity_summary['Info']}{Style.RESET_ALL}")
+
+        print(f"{'═'*60}")
 
     # =================================================================
     # REPORT GENERATION
@@ -410,6 +456,28 @@ def main():
                 scan_duration=scan_duration,
             )
             print(f"  📊 HTML Report: {html_path}")
+
+        # Optional CSV export
+        if args.csv:
+            csv_path = generator.generate_csv(
+                target=args.target,
+                all_findings=all_findings,
+                port_results=port_results,
+                service_results=service_results,
+                scan_duration=scan_duration,
+            )
+            print(f"  📑 CSV Report:  {csv_path}")
+
+        # Optional SARIF export
+        if args.sarif:
+            sarif_path = generator.generate_sarif(
+                target=args.target,
+                all_findings=all_findings,
+                port_results=port_results,
+                service_results=service_results,
+                scan_duration=scan_duration,
+            )
+            print(f"  🛡️ SARIF Report: {sarif_path}")
 
     print(f"\n{Fore.GREEN}✅ All done.{Style.RESET_ALL}\n")
 

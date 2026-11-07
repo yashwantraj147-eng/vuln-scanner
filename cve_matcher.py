@@ -8,10 +8,12 @@ against known vulnerabilities using semantic version comparison.
 The CVE snapshot is a curated subset of real CVEs for common services.
 """
 
+import re
 import json
 import logging
 from typing import Optional
 from packaging import version as pkg_version
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +58,7 @@ class CVEMatcher:
         Handles common version format variations.
 
         Args:
-            version_str: Version string like "2.4.51" or "9.1p1".
+            version_str: Version string like "2.4.51", "v1.2.3", or "9.1p1".
 
         Returns:
             Version object or None if unparseable.
@@ -64,9 +66,13 @@ class CVEMatcher:
         if not version_str or version_str == "Unknown":
             return None
 
+        # Strip leading 'v'
+        v_str = str(version_str).strip()
+        if v_str.lower().startswith("v") and len(v_str) > 1 and v_str[1].isdigit():
+            v_str = v_str[1:]
+
         # Clean up version string — remove non-version suffixes
-        # e.g., "9.1p1" -> "9.1", "2.4.51-ubuntu" -> "2.4.51"
-        cleaned = version_str.split("p")[0]  # Handle OpenSSH "pN" suffix
+        cleaned = v_str.split("p")[0]  # Handle OpenSSH "pN" suffix
         cleaned = cleaned.split("-")[0]      # Remove distro suffixes
         cleaned = cleaned.split("_")[0]      # Remove underscore suffixes
         cleaned = cleaned.split("+")[0]      # Remove build metadata
@@ -74,8 +80,109 @@ class CVEMatcher:
         try:
             return pkg_version.Version(cleaned)
         except pkg_version.InvalidVersion:
+            # Fallback regex extraction of numeric version (e.g. 2.4.58)
+            match = re.search(r"(\d+(?:\.\d+)+)", version_str)
+            if match:
+                try:
+                    return pkg_version.Version(match.group(1))
+                except pkg_version.InvalidVersion:
+                    pass
             logger.debug(f"Could not parse version: '{version_str}'")
             return None
+
+    def update_from_cisa_kev(self, timeout: int = 10, save_to_disk: bool = False) -> int:
+        """
+        Fetch the CISA Known Exploited Vulnerabilities (KEV) catalog.
+
+        Args:
+            timeout: Network request timeout in seconds.
+            save_to_disk: If True, writes fetched CVEs to the local snapshot path.
+
+        Returns:
+            Count of CVEs updated.
+        """
+        url = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+        try:
+            logger.info("Fetching CISA Known Exploited Vulnerabilities (KEV) catalog...")
+            resp = requests.get(url, timeout=timeout)
+            if resp.status_code == 200:
+                data = resp.json()
+                vulnerabilities = data.get("vulnerabilities", [])
+                logger.info(f"Retrieved {len(vulnerabilities)} vulnerabilities from CISA KEV.")
+
+                # Convert/enrich relevant entries into cve snapshot format
+                added = 0
+                existing_ids = {c.get("cve_id") for c in self.cve_entries}
+                for v in vulnerabilities:
+                    cve_id = v.get("cveID")
+                    if cve_id and cve_id not in existing_ids:
+                        product = v.get("product", "")
+                        desc = v.get("shortDescription", "")
+                        remedy = v.get("requiredAction", "Apply security update")
+                        self.cve_entries.append({
+                            "cve_id": cve_id,
+                            "service": product,
+                            "affected_versions": {"min": "0.0", "max": "999999"},
+                            "severity": "Critical",
+                            "cvss_score": 9.0,
+                            "description": f"[CISA KEV] {desc}",
+                            "remediation": remedy,
+                        })
+                        existing_ids.add(cve_id)
+                        added += 1
+
+                if save_to_disk and added > 0:
+                    with open(self.cve_db_path, "w", encoding="utf-8") as f:
+                        json.dump(self.cve_entries, f, indent=2)
+
+                return added
+        except Exception as e:
+            logger.warning(f"Unable to update from CISA KEV feed: {e}")
+        return 0
+
+    def query_osv_api(self, service: str, version: str, timeout: int = 5) -> list[dict]:
+        """
+        Query the open OSV.dev vulnerability database API for a package.
+
+        Args:
+            service: Service/package name.
+            version: Detected version string.
+            timeout: HTTP timeout in seconds.
+
+        Returns:
+            List of matching CVE entries from OSV.
+        """
+        findings = []
+        clean_ver = str(self._parse_version(version) or version)
+        url = "https://api.osv.dev/v1/query"
+        payload = {"version": clean_ver, "package": {"name": service.lower()}}
+
+        try:
+            resp = requests.post(url, json=payload, timeout=timeout)
+            if resp.status_code == 200:
+                data = resp.json()
+                for vuln in data.get("vulns", []):
+                    cve_id = vuln.get("id", "")
+                    aliases = vuln.get("aliases", [])
+                    # Prefer CVE identifier if available in aliases
+                    for a in aliases:
+                        if a.startswith("CVE-"):
+                            cve_id = a
+                            break
+                    summary = vuln.get("summary") or vuln.get("details", "")[:150]
+                    findings.append({
+                        "cve_id": cve_id,
+                        "service": service,
+                        "affected_versions": {"min": clean_ver, "max": clean_ver},
+                        "severity": "High",
+                        "cvss_score": 7.5,
+                        "description": f"[OSV] {summary}",
+                        "remediation": f"Upgrade {service} to the latest stable release.",
+                    })
+        except Exception as e:
+            logger.debug(f"OSV lookup error for {service} v{version}: {e}")
+
+        return findings
 
     def _is_version_affected(
         self, detected_version: str, affected_range: dict

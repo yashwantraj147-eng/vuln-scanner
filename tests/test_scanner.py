@@ -460,6 +460,65 @@ class TestCVEMatcher:
         matches = matcher.match_service("OpenSSH", "9.1p1")
         assert len(matches) == 1  # Should match after stripping the p1 suffix
 
+    def test_version_parsing_prefix_and_fallback(self, sample_cve_db):
+        """Test version parsing with v-prefix and complex tags."""
+        from cve_matcher import CVEMatcher
+        matcher = CVEMatcher(cve_db_path=sample_cve_db)
+        v1 = matcher._parse_version("v2.4.50")
+        assert v1 is not None
+        assert str(v1) == "2.4.50"
+
+        v2 = matcher._parse_version("2.4.50-1ubuntu0.1")
+        assert v2 is not None
+        assert str(v2) == "2.4.50"
+
+    @patch("requests.get")
+    def test_cisa_kev_update(self, mock_get, sample_cve_db):
+        """Test CISA KEV catalog update with mocks."""
+        from cve_matcher import CVEMatcher
+        matcher = CVEMatcher(cve_db_path=sample_cve_db)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "vulnerabilities": [
+                {
+                    "cveID": "CVE-2024-9999",
+                    "product": "TestServer",
+                    "shortDescription": "Critical RCE in wild",
+                    "requiredAction": "Patch immediately",
+                }
+            ]
+        }
+        mock_get.return_value = mock_resp
+
+        added = matcher.update_from_cisa_kev()
+        assert added == 1
+        assert any(c["cve_id"] == "CVE-2024-9999" for c in matcher.cve_entries)
+
+    @patch("requests.post")
+    def test_osv_api_query(self, mock_post, sample_cve_db):
+        """Test OSV.dev vulnerability lookup with mocks."""
+        from cve_matcher import CVEMatcher
+        matcher = CVEMatcher(cve_db_path=sample_cve_db)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "vulns": [
+                {
+                    "id": "GHSA-1234",
+                    "aliases": ["CVE-2024-8888"],
+                    "summary": "OSV reported vulnerability",
+                }
+            ]
+        }
+        mock_post.return_value = mock_resp
+
+        results = matcher.query_osv_api("apache", "2.4.50")
+        assert len(results) == 1
+        assert results[0]["cve_id"] == "CVE-2024-8888"
+
 
 # ============================================================================
 # Web Scanner Tests
@@ -534,6 +593,61 @@ class TestWebScanner:
         assert len(findings) > 0
         assert findings[0]["type"] == "Cross-Site Scripting (XSS)"
         assert findings[0]["severity"] == "High"
+
+    @patch("requests.Session.get")
+    def test_check_security_headers(self, mock_get, web_scanner_config):
+        """Test missing security headers detection."""
+        from scanner.web_scanner import WebScanner
+        scanner = WebScanner(config=web_scanner_config)
+
+        mock_resp = MagicMock()
+        mock_resp.headers = {"Server": "Apache"}
+        mock_get.return_value = mock_resp
+
+        findings = scanner.check_security_headers("https://127.0.0.1")
+        assert len(findings) >= 3
+        types = [f["type"] for f in findings]
+        assert "Missing Security Header - CSP" in types
+        assert "Missing Security Header - HSTS" in types
+
+    @patch("requests.Session.get")
+    def test_check_cors(self, mock_get, web_scanner_config):
+        """Test CORS misconfiguration detection."""
+        from scanner.web_scanner import WebScanner
+        scanner = WebScanner(config=web_scanner_config)
+
+        mock_resp = MagicMock()
+        mock_resp.headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": "true",
+        }
+        mock_get.return_value = mock_resp
+
+        findings = scanner.check_cors("http://127.0.0.1")
+        assert len(findings) == 1
+        assert findings[0]["type"] == "Insecure CORS Configuration"
+        assert findings[0]["severity"] == "Critical"
+
+    @patch("requests.Session.get")
+    def test_check_cookies(self, mock_get, web_scanner_config):
+        """Test insecure cookie flags detection."""
+        from scanner.web_scanner import WebScanner
+        scanner = WebScanner(config=web_scanner_config)
+
+        mock_cookie = MagicMock()
+        mock_cookie.name = "session_id"
+        mock_cookie.secure = False
+        mock_cookie.has_nonstandard_attr.return_value = False
+        mock_cookie._rest = {}
+
+        mock_resp = MagicMock()
+        mock_resp.cookies = [mock_cookie]
+        mock_get.return_value = mock_resp
+
+        findings = scanner.check_cookies("https://127.0.0.1")
+        assert len(findings) == 1
+        assert findings[0]["type"] == "Insecure Cookie Flags"
+        assert "session_id" in findings[0]["evidence"]
 
     def test_scan_no_http_ports(self, web_scanner_config):
         """Test web scan when no HTTP ports are found."""
@@ -661,6 +775,46 @@ class TestCredsChecker:
 
         result = checker._check_ssh("127.0.0.1", 22, "admin", "wrongpass")
         assert result is None
+
+    @patch("socket.create_connection")
+    def test_telnet_socket_success(self, mock_create_connection, creds_checker_config):
+        """Test socket-based Telnet credential checking."""
+        from scanner.creds_checker import CredsChecker
+        checker = CredsChecker(config=creds_checker_config)
+
+        mock_sock = MagicMock()
+        mock_create_connection.return_value = mock_sock
+        # Simulate telnet prompts and successful login response
+        mock_sock.recv.side_effect = [
+            b"Login: ",
+            b"Password: ",
+            b"Welcome to Lab Server\r\n# ",
+            b"",
+        ]
+
+        result = checker._check_telnet("127.0.0.1", 23, "admin", "admin")
+        assert result is not None
+        assert result["type"] == "Default Credentials - Telnet"
+        assert result["severity"] == "Critical"
+
+    @patch("socket.create_connection")
+    def test_redis_unauthenticated(self, mock_create_connection, creds_checker_config):
+        """Test unauthenticated Redis access detection."""
+        from scanner.creds_checker import CredsChecker
+        checker = CredsChecker(config=creds_checker_config)
+
+        mock_sock = MagicMock()
+        mock_create_connection.return_value = mock_sock
+        mock_sock.recv.side_effect = [
+            b"+PONG\r\n",
+            b"# Server\r\nredis_version:7.2.4\r\n",
+        ]
+
+        result = checker._check_redis("127.0.0.1", 6379)
+        assert result is not None
+        assert result["type"] == "Unauthenticated Access - Redis"
+        assert result["severity"] == "Critical"
+        assert "7.2.4" in result["evidence"]
 
     def test_scan_no_applicable_services(self, creds_checker_config):
         """Test creds scan when no applicable services are found."""
@@ -824,6 +978,74 @@ class TestReportGenerator:
         assert "Test Report" in content
         assert "127.0.0.1" in content
         assert "CRITICAL" in content
+
+    def test_generate_csv(self, tmp_path):
+        """Test CSV report generation."""
+        from report_generator import ReportGenerator
+        gen = ReportGenerator(config={}, output_dir=str(tmp_path))
+
+        all_findings = {
+            "Web Module": [
+                {
+                    "type": "SQL Injection",
+                    "severity": "Critical",
+                    "target": "http://127.0.0.1/search",
+                    "evidence": "SQL syntax error",
+                    "description": "SQLi discovered",
+                    "remediation": "Use prepared statements",
+                }
+            ]
+        }
+
+        csv_path = gen.generate_csv(
+            target="127.0.0.1",
+            all_findings=all_findings,
+            port_results=[],
+            service_results=[],
+            scan_duration=2.5,
+        )
+
+        assert os.path.exists(csv_path)
+        content = open(csv_path, encoding="utf-8").read()
+        assert "Module,Type,Severity,Target,Evidence,Description,Remediation" in content
+        assert "SQL Injection" in content
+        assert "Critical" in content
+
+    def test_generate_sarif(self, tmp_path):
+        """Test SARIF v2.1.0 report generation."""
+        from report_generator import ReportGenerator
+        gen = ReportGenerator(config={}, output_dir=str(tmp_path))
+
+        all_findings = {
+            "CVE Module": [
+                {
+                    "type": "CVE Vulnerability",
+                    "cve_id": "CVE-2024-6387",
+                    "severity": "Critical",
+                    "target": "127.0.0.1:22",
+                    "evidence": "OpenSSH 9.5",
+                    "description": "RegreSSHion RCE",
+                    "remediation": "Upgrade OpenSSH",
+                }
+            ]
+        }
+
+        sarif_path = gen.generate_sarif(
+            target="127.0.0.1",
+            all_findings=all_findings,
+            port_results=[],
+            service_results=[],
+            scan_duration=1.2,
+        )
+
+        assert os.path.exists(sarif_path)
+        with open(sarif_path, encoding="utf-8") as f:
+            sarif = json.load(f)
+
+        assert sarif["version"] == "2.1.0"
+        assert sarif["runs"][0]["tool"]["driver"]["name"] == "VulnScanner"
+        assert len(sarif["runs"][0]["results"]) == 1
+        assert sarif["runs"][0]["results"][0]["ruleId"] == "CVE-2024-6387"
 
 
 # ============================================================================

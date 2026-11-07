@@ -6,6 +6,7 @@ Generates HTML and JSON reports from scan findings using Jinja2
 templates with embedded Chart.js visualizations.
 """
 
+import csv
 import json
 import os
 import logging
@@ -236,3 +237,143 @@ class ReportGenerator:
 
         logger.info(f"JSON report generated: {json_path}")
         return json_path
+
+    def generate_csv(
+        self,
+        target: str,
+        all_findings: dict,
+        port_results: list[dict],
+        service_results: list[dict],
+        scan_duration: float,
+    ) -> str:
+        """
+        Generate a CSV export of all scan findings for spreadsheet analysis.
+
+        Args:
+            target: Scan target string.
+            all_findings: Dict of findings keyed by module name.
+            port_results: List of open port scan results.
+            service_results: List of service detection results.
+            scan_duration: Total scan duration in seconds.
+
+        Returns:
+            Path to the generated CSV report file.
+        """
+        flat_findings = self._categorize_findings(all_findings)
+        now = datetime.now(timezone.utc)
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        csv_filename = f"vuln_report_{target.replace('.', '_').replace('/', '_')}_{timestamp}.csv"
+        csv_path = os.path.join(self.output_dir, csv_filename)
+
+        fieldnames = [
+            "Module",
+            "Type",
+            "Severity",
+            "Target",
+            "Evidence",
+            "Description",
+            "Remediation",
+        ]
+
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for finding in flat_findings:
+                writer.writerow({
+                    "Module": finding.get("module", ""),
+                    "Type": finding.get("type", ""),
+                    "Severity": finding.get("severity", "Info"),
+                    "Target": finding.get("target") or finding.get("url", target),
+                    "Evidence": str(finding.get("evidence", "")),
+                    "Description": finding.get("description", ""),
+                    "Remediation": finding.get("remediation", ""),
+                })
+
+        logger.info(f"CSV report generated: {csv_path}")
+        return csv_path
+
+    def generate_sarif(
+        self,
+        target: str,
+        all_findings: dict,
+        port_results: list[dict],
+        service_results: list[dict],
+        scan_duration: float,
+    ) -> str:
+        """
+        Generate a SARIF v2.1.0 JSON export for CI/CD and code scanning integration.
+
+        Args:
+            target: Scan target string.
+            all_findings: Dict of findings keyed by module name.
+            port_results: List of open port scan results.
+            service_results: List of service detection results.
+            scan_duration: Total scan duration in seconds.
+
+        Returns:
+            Path to the generated SARIF export file.
+        """
+        flat_findings = self._categorize_findings(all_findings)
+        now = datetime.now(timezone.utc)
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        sarif_filename = f"vuln_report_{target.replace('.', '_').replace('/', '_')}_{timestamp}.sarif"
+        sarif_path = os.path.join(self.output_dir, sarif_filename)
+
+        level_map = {
+            "critical": "error",
+            "high": "error",
+            "medium": "warning",
+            "low": "note",
+            "info": "none",
+        }
+
+        rules = {}
+        results = []
+
+        for i, f in enumerate(flat_findings):
+            rule_id = f.get("cve_id") or f.get("type", f"RULE-{i+1}").replace(" ", "_")
+            if rule_id not in rules:
+                rules[rule_id] = {
+                    "id": rule_id,
+                    "name": f.get("type", rule_id),
+                    "shortDescription": {"text": f.get("type", rule_id)},
+                    "fullDescription": {"text": f.get("description", "")},
+                    "help": {"text": f.get("remediation", "")},
+                }
+
+            results.append({
+                "ruleId": rule_id,
+                "level": level_map.get(f.get("severity", "info").lower(), "warning"),
+                "message": {
+                    "text": f"{f.get('type')}: {f.get('evidence', '')}. {f.get('description', '')}"
+                },
+                "locations": [{
+                    "physicalLocation": {
+                        "artifactLocation": {
+                            "uri": str(f.get("target") or f.get("url") or target)
+                        }
+                    }
+                }],
+            })
+
+        sarif_data = {
+            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [{
+                "tool": {
+                    "driver": {
+                        "name": "VulnScanner",
+                        "version": "1.1.0",
+                        "informationUri": "https://github.com/security/vuln_scanner",
+                        "rules": list(rules.values()),
+                    }
+                },
+                "results": results,
+            }]
+        }
+
+        with open(sarif_path, "w", encoding="utf-8") as f:
+            json.dump(sarif_data, f, indent=2)
+
+        logger.info(f"SARIF report generated: {sarif_path}")
+        return sarif_path

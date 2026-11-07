@@ -25,10 +25,14 @@ desktop.ini
 
 # pytest
 .pytest_cache/
+.coverage
+htmlcov/
 
 # Output reports (generated at runtime)
 output/*.html
 output/*.json
+output/*.csv
+output/*.sarif
 
 # Environment
 .env

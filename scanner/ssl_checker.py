@@ -76,11 +76,18 @@ class SSLChecker:
                         cert_bin, default_backend()
                     )
 
+                    alpn_proto = (
+                        tls_sock.selected_alpn_protocol()
+                        if hasattr(tls_sock, "selected_alpn_protocol")
+                        else None
+                    )
+
                     return {
                         "cert_dict": cert_dict,
                         "cert_obj": cert_obj,
                         "cipher": cipher_info,
                         "protocol": protocol_version,
+                        "alpn": alpn_proto,
                         "cert_binary": cert_bin,
                     }
 
@@ -369,6 +376,7 @@ class SSLChecker:
     def _test_deprecated_protocols(self, ip: str, port: int) -> list[dict]:
         """
         Actively test if the server accepts deprecated protocol versions.
+        Supports both modern Python 3.10-3.13+ (ssl.TLSVersion) and legacy fallback.
 
         Args:
             ip: Target IP.
@@ -379,23 +387,26 @@ class SSLChecker:
         """
         findings = []
 
-        # Map protocol names to ssl module constants
-        protocol_tests = []
-        if hasattr(ssl, "PROTOCOL_TLSv1"):
-            protocol_tests.append(("TLSv1.0", ssl.PROTOCOL_TLSv1))
-        if hasattr(ssl, "PROTOCOL_TLSv1_1"):
-            protocol_tests.append(("TLSv1.1", ssl.PROTOCOL_TLSv1_1))
+        # Modern Python ssl module uses TLSVersion enum
+        test_cases = []
+        if hasattr(ssl, "TLSVersion"):
+            test_cases.append(("TLSv1.0", ssl.TLSVersion.TLSv1))
+            test_cases.append(("TLSv1.1", ssl.TLSVersion.TLSv1_1))
 
-        for proto_name, proto_const in protocol_tests:
+        for proto_name, tls_version in test_cases:
             try:
-                context = ssl.SSLContext(proto_const)
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
                 context.check_hostname = False
                 context.verify_mode = ssl.CERT_NONE
-                with socket.create_connection(
-                    (ip, port), timeout=self.timeout
-                ) as sock:
+                context.minimum_version = tls_version
+                context.maximum_version = tls_version
+                try:
+                    context.set_ciphers("ALL:@SECLEVEL=0")
+                except (ssl.SSLError, ValueError):
+                    pass
+
+                with socket.create_connection((ip, port), timeout=self.timeout) as sock:
                     with context.wrap_socket(sock, server_hostname=ip) as tls_sock:
-                        # Connection succeeded — deprecated protocol is supported
                         findings.append(
                             {
                                 "type": "SSL/TLS - Deprecated Protocol Supported",
@@ -412,9 +423,95 @@ class SSLChecker:
                                 ),
                             }
                         )
-            except (ssl.SSLError, OSError, ConnectionRefusedError):
-                # Connection failed — protocol not supported (good)
+            except (ssl.SSLError, OSError, ConnectionRefusedError, ValueError):
                 pass
+
+        if not test_cases:
+            legacy_tests = []
+            if hasattr(ssl, "PROTOCOL_TLSv1"):
+                legacy_tests.append(("TLSv1.0", ssl.PROTOCOL_TLSv1))
+            if hasattr(ssl, "PROTOCOL_TLSv1_1"):
+                legacy_tests.append(("TLSv1.1", ssl.PROTOCOL_TLSv1_1))
+
+            for proto_name, proto_const in legacy_tests:
+                try:
+                    context = ssl.SSLContext(proto_const)
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                    with socket.create_connection(
+                        (ip, port), timeout=self.timeout
+                    ) as sock:
+                        with context.wrap_socket(sock, server_hostname=ip) as tls_sock:
+                            findings.append(
+                                {
+                                    "type": "SSL/TLS - Deprecated Protocol Supported",
+                                    "severity": "High",
+                                    "target": f"{ip}:{port}",
+                                    "evidence": f"Server accepts {proto_name}",
+                                    "description": (
+                                        f"The server at {ip}:{port} accepts connections "
+                                        f"using deprecated {proto_name}."
+                                    ),
+                                    "remediation": (
+                                        f"Disable {proto_name} on the server. "
+                                        f"Only allow TLS 1.2 and TLS 1.3."
+                                    ),
+                                }
+                            )
+                except (ssl.SSLError, OSError, ConnectionRefusedError, ValueError):
+                    pass
+
+        return findings
+
+    def _check_san(self, cert_obj, ip: str, port: int) -> list[dict]:
+        """
+        Check certificate Subject Alternative Names (SAN).
+
+        Args:
+            cert_obj: x509 certificate object.
+            ip: Target IP or domain.
+            port: Target port.
+
+        Returns:
+            List of SAN-related findings.
+        """
+        findings = []
+        try:
+            san_ext = cert_obj.extensions.get_extension_for_oid(
+                x509.ExtensionOID.SUBJECT_ALTERNATIVE_NAME
+            )
+            dns_names = san_ext.value.get_values_for_type(x509.DNSName)
+            ip_names = [str(ip_addr) for ip_addr in san_ext.value.get_values_for_type(x509.IPAddress)]
+            all_sans = dns_names + ip_names
+            if not all_sans:
+                findings.append(
+                    {
+                        "type": "SSL/TLS - Missing Subject Alternative Names",
+                        "severity": "Low",
+                        "target": f"{ip}:{port}",
+                        "evidence": "No SAN entries found in certificate",
+                        "description": (
+                            "The certificate lacks Subject Alternative Names (SANs). "
+                            "Modern browsers require SANs for identity validation."
+                        ),
+                        "remediation": "Re-issue certificate with proper Subject Alternative Names.",
+                    }
+                )
+        except x509.ExtensionNotFound:
+            findings.append(
+                {
+                    "type": "SSL/TLS - Missing Subject Alternative Names",
+                    "severity": "Low",
+                    "target": f"{ip}:{port}",
+                    "evidence": "No SAN extension found",
+                    "description": (
+                        "The certificate does not include the Subject Alternative Name extension."
+                    ),
+                    "remediation": "Re-issue certificate with Subject Alternative Names (SAN).",
+                }
+            )
+        except Exception:
+            pass
 
         return findings
 
@@ -478,6 +575,9 @@ class SSLChecker:
 
             if self.check_self_signed:
                 self.results.extend(self._check_self_signed(cert_obj, ip, port))
+
+            # Check SAN
+            self.results.extend(self._check_san(cert_obj, ip, port))
 
             if self.check_weak_ciphers and cipher_info:
                 self.results.extend(

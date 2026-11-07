@@ -35,15 +35,22 @@ port_scanner:
     - 1433  # MSSQL
     - 1521  # Oracle
     - 2049  # NFS
+    - 2375  # Docker daemon (unencrypted)
+    - 3000  # Node.js / Grafana
     - 3306  # MySQL
     - 3389  # RDP
+    - 5000  # Flask / Dev server
     - 5432  # PostgreSQL
+    - 5672  # RabbitMQ
     - 5900  # VNC
     - 6379  # Redis
+    - 6443  # Kubernetes API
+    - 8000  # HTTP Alt
     - 8080  # HTTP Proxy
     - 8443  # HTTPS Alt
     - 8888  # HTTP Alt
-    - 9090  # Web Admin
+    - 9090  # Web Admin / Prometheus
+    - 9200  # Elasticsearch
     - 27017 # MongoDB
   scan_type: "connect"         # "syn" (requires admin/root) or "connect"
   banner_timeout: 3            # Timeout for banner grabbing in seconds
@@ -89,6 +96,15 @@ service_detector:
     - pattern: "MongoDB.*?([\\d.]+)"
       service: "MongoDB"
       version_group: 1
+    - pattern: "Docker.*?([\\d.]+)"
+      service: "Docker"
+      version_group: 1
+    - pattern: "Elasticsearch.*?([\\d.]+)"
+      service: "Elasticsearch"
+      version_group: 1
+    - pattern: "X-Powered-By: Express"
+      service: "Express.js"
+      version_group: 0
 
 # --- Web Scanner Settings ---
 web_scanner:
@@ -163,11 +179,16 @@ web_scanner:
     - "/phpmyadmin"
     - "/console"
     - "/.git"
+    - "/.git/config"
     - "/.env"
     - "/robots.txt"
     - "/sitemap.xml"
     - "/api"
+    - "/docs"
+    - "/openapi.json"
     - "/swagger"
+    - "/actuator/env"
+    - "/actuator/health"
     - "/backup"
     - "/config"
     - "/server-status"

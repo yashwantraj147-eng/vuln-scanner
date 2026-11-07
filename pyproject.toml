@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vulnscanner"
+version = "1.1.0"
+description = "A comprehensive, multi-threaded vulnerability scanner for authorized security assessments."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Security Research Team" }
+]
+keywords = ["security", "vulnerability-scanner", "cve", "port-scanner", "ssl", "audit"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+]
+dependencies = [
+    "scapy>=2.5.0",
+    "paramiko>=3.4.0",
+    "requests>=2.31.0",
+    "Jinja2>=3.1.2",
+    "PyYAML>=6.0.1",
+    "python-nmap>=0.7.1",
+    "colorama>=0.4.6",
+    "prettytable>=3.9.0",
+    "rich>=13.0.0",
+    "urllib3>=2.1.0",
+    "cryptography>=42.0.0",
+    "pyOpenSSL>=24.0.0",
+    "packaging>=24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+    "pytest-cov>=5.0.0",
+]
+
+[project.scripts]
+vulnscanner = "main:main"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+

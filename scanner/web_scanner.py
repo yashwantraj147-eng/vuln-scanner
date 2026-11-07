@@ -217,6 +217,34 @@ class WebScanner:
                 if resp is None:
                     continue
 
+                # Check for time-based blind SQLi if delay payload was sent
+                if "delay" in payload.lower() or "sleep" in payload.lower():
+                    elapsed = getattr(resp, "elapsed", None)
+                    duration = elapsed.total_seconds() if elapsed else 0
+                    if duration >= 4.5:
+                        finding = {
+                            "type": "SQL Injection (Time-Based Blind)",
+                            "severity": "Critical",
+                            "url": url,
+                            "parameter": param,
+                            "payload": payload,
+                            "evidence": f"Response delayed by {duration:.2f}s",
+                            "method": method,
+                            "description": (
+                                f"Time-based blind SQL injection detected in parameter '{param}'. "
+                                f"Target response was delayed significantly ({duration:.2f}s)."
+                            ),
+                            "remediation": (
+                                "Use parameterized queries (prepared statements). "
+                                "Never concatenate user input directly into SQL queries."
+                            ),
+                        }
+                        findings.append(finding)
+                        logger.warning(
+                            f"    [!] Blind SQLi (delay) found: {url} param='{param}' ({duration:.2f}s)"
+                        )
+                        break
+
                 # Check response for SQL error indicators
                 response_lower = resp.text.lower()
                 for error_sig in self.sqli_errors:
@@ -560,6 +588,187 @@ class WebScanner:
 
         return findings
 
+    def check_security_headers(self, base_url: str) -> list[dict]:
+        """
+        Check for missing or misconfigured HTTP security headers.
+
+        Args:
+            base_url: Base URL of the target.
+
+        Returns:
+            List of security header findings.
+        """
+        findings = []
+        resp = self._make_request(base_url)
+        if not resp:
+            return findings
+
+        headers = {k.lower(): v for k, v in resp.headers.items()}
+
+        # 1. Content-Security-Policy (CSP)
+        if "content-security-policy" not in headers:
+            findings.append({
+                "type": "Missing Security Header - CSP",
+                "severity": "Medium",
+                "url": base_url,
+                "parameter": "N/A",
+                "payload": "Content-Security-Policy",
+                "evidence": "Header not present",
+                "method": "GET",
+                "description": (
+                    "Content-Security-Policy (CSP) header is missing. CSP helps prevent "
+                    "Cross-Site Scripting (XSS) and data injection attacks by restricting "
+                    "resources that the browser is allowed to load."
+                ),
+                "remediation": "Define and enforce a restrictive Content-Security-Policy header.",
+            })
+
+        # 2. Strict-Transport-Security (HSTS) - on HTTPS
+        if base_url.startswith("https://") and "strict-transport-security" not in headers:
+            findings.append({
+                "type": "Missing Security Header - HSTS",
+                "severity": "Medium",
+                "url": base_url,
+                "parameter": "N/A",
+                "payload": "Strict-Transport-Security",
+                "evidence": "Header not present on HTTPS",
+                "method": "GET",
+                "description": (
+                    "HTTP Strict Transport Security (HSTS) header is missing. "
+                    "HSTS ensures browsers only connect via HTTPS, preventing SSL-stripping attacks."
+                ),
+                "remediation": "Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains'.",
+            })
+
+        # 3. X-Frame-Options (Clickjacking)
+        if "x-frame-options" not in headers and "content-security-policy" not in headers:
+            findings.append({
+                "type": "Missing Security Header - X-Frame-Options",
+                "severity": "Low",
+                "url": base_url,
+                "parameter": "N/A",
+                "payload": "X-Frame-Options",
+                "evidence": "Header not present",
+                "method": "GET",
+                "description": (
+                    "X-Frame-Options header is missing. The site may be vulnerable to clickjacking "
+                    "if framed in malicious pages."
+                ),
+                "remediation": "Set 'X-Frame-Options: DENY' or 'X-Frame-Options: SAMEORIGIN'.",
+            })
+
+        # 4. X-Content-Type-Options
+        if headers.get("x-content-type-options", "").lower() != "nosniff":
+            findings.append({
+                "type": "Missing Security Header - X-Content-Type-Options",
+                "severity": "Low",
+                "url": base_url,
+                "parameter": "N/A",
+                "payload": "X-Content-Type-Options",
+                "evidence": f"Current value: {headers.get('x-content-type-options', 'missing')}",
+                "method": "GET",
+                "description": (
+                    "X-Content-Type-Options header is missing or not set to 'nosniff'. "
+                    "This allows MIME-type sniffing which can lead to script execution."
+                ),
+                "remediation": "Add 'X-Content-Type-Options: nosniff'.",
+            })
+
+        return findings
+
+    def check_cors(self, base_url: str) -> list[dict]:
+        """
+        Check for insecure Cross-Origin Resource Sharing (CORS) configurations.
+
+        Args:
+            base_url: Base URL of the target.
+
+        Returns:
+            List of CORS misconfiguration findings.
+        """
+        findings = []
+        try:
+            evil_origin = "https://evil.com"
+            headers = {"Origin": evil_origin}
+            resp = self.session.get(base_url, headers=headers, timeout=self.timeout, verify=False)
+            allow_origin = resp.headers.get("Access-Control-Allow-Origin", "")
+            allow_creds = resp.headers.get("Access-Control-Allow-Credentials", "").lower() == "true"
+
+            if allow_origin == "*" and allow_creds:
+                findings.append({
+                    "type": "Insecure CORS Configuration",
+                    "severity": "Critical",
+                    "url": base_url,
+                    "parameter": "Origin",
+                    "payload": evil_origin,
+                    "evidence": "Access-Control-Allow-Origin: * with Allow-Credentials: true",
+                    "method": "GET",
+                    "description": (
+                        "Wildcard Access-Control-Allow-Origin is configured alongside "
+                        "Access-Control-Allow-Credentials: true, exposing authenticated data cross-origin."
+                    ),
+                    "remediation": "Restrict Access-Control-Allow-Origin to trusted domains and avoid wildcards with credentials.",
+                })
+            elif evil_origin in allow_origin and allow_creds:
+                findings.append({
+                    "type": "CORS Arbitrary Origin Reflection",
+                    "severity": "High",
+                    "url": base_url,
+                    "parameter": "Origin",
+                    "payload": evil_origin,
+                    "evidence": f"Reflected Origin {allow_origin} with credentials allowed",
+                    "method": "GET",
+                    "description": (
+                        "The application reflects arbitrary untrusted Origins and permits credentials, "
+                        "enabling cross-origin data theft of authenticated sessions."
+                    ),
+                    "remediation": "Validate the Origin header against a strict server-side whitelist.",
+                })
+        except Exception:
+            pass
+
+        return findings
+
+    def check_cookies(self, base_url: str) -> list[dict]:
+        """
+        Check session/auth cookies for missing Secure, HttpOnly, and SameSite attributes.
+
+        Args:
+            base_url: Base URL of the target.
+
+        Returns:
+            List of cookie security findings.
+        """
+        findings = []
+        resp = self._make_request(base_url)
+        if not resp or not resp.cookies:
+            return findings
+
+        for cookie in resp.cookies:
+            missing_flags = []
+            if not cookie.secure and base_url.startswith("https://"):
+                missing_flags.append("Secure")
+            if not getattr(cookie, "_rest", {}).get("HttpOnly") and not cookie.has_nonstandard_attr("HttpOnly"):
+                missing_flags.append("HttpOnly")
+
+            if missing_flags:
+                findings.append({
+                    "type": "Insecure Cookie Flags",
+                    "severity": "Low",
+                    "url": base_url,
+                    "parameter": cookie.name,
+                    "payload": cookie.name,
+                    "evidence": f"Cookie '{cookie.name}' missing flags: {', '.join(missing_flags)}",
+                    "method": "GET",
+                    "description": (
+                        f"Cookie '{cookie.name}' was set without {', '.join(missing_flags)} flags. "
+                        "Missing HttpOnly permits JavaScript access (XSS risk); missing Secure transmits cookies over plaintext."
+                    ),
+                    "remediation": "Set Secure, HttpOnly, and SameSite=Lax/Strict flags on all sensitive cookies.",
+                })
+
+        return findings
+
     def scan(self, target: str, port_results: list[dict]) -> list[dict]:
         """
         Run all web vulnerability tests against HTTP/HTTPS targets.
@@ -600,10 +809,15 @@ class WebScanner:
                 logger.warning(f"  Cannot reach {base_url}. Skipping.")
                 continue
 
+            # Check Security Headers, CORS, and Cookies
+            self.results.extend(self.check_security_headers(base_url))
+            self.results.extend(self.check_cors(base_url))
+            self.results.extend(self.check_cookies(base_url))
+
             # Discover injectable parameters
             params = self._discover_params(base_url)
 
-            # Run all web vulnerability tests
+            # Run all parameter & path-based web vulnerability tests
             self.results.extend(self.test_sqli(base_url, params))
             self.results.extend(self.test_xss(base_url, params))
             self.results.extend(self.test_open_redirect(base_url, params))

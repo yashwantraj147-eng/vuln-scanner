@@ -17,17 +17,6 @@ import ftplib
 import logging
 import socket
 import time
-
-# telnetlib was removed in Python 3.13+
-try:
-    import telnetlib
-    TELNETLIB_AVAILABLE = True
-except ImportError:
-    TELNETLIB_AVAILABLE = False
-    logging.getLogger(__name__).warning(
-        "telnetlib not available (removed in Python 3.13+). "
-        "Telnet credential checking disabled."
-    )
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -42,6 +31,7 @@ try:
 except ImportError:
     PARAMIKO_AVAILABLE = False
     logger.warning("Paramiko not available. SSH credential checking disabled.")
+
 
 
 class CredsChecker:
@@ -193,7 +183,8 @@ class CredsChecker:
 
     def _check_telnet(self, ip: str, port: int, username: str, password: str) -> Optional[dict]:
         """
-        Attempt Telnet login with given credentials.
+        Attempt Telnet login with given credentials using standard sockets
+        (compatible with Python 3.10 through Python 3.13+ without telnetlib).
 
         Args:
             ip: Target IP address.
@@ -204,36 +195,69 @@ class CredsChecker:
         Returns:
             Finding dictionary if login succeeds, None otherwise.
         """
-        if not TELNETLIB_AVAILABLE:
-            return None
+        sock = None
         try:
-            tn = telnetlib.Telnet(ip, port, timeout=self.timeout)
+            sock = socket.create_connection((ip, port), timeout=self.timeout)
+            sock.settimeout(self.timeout)
 
-            # Wait for login prompt
-            response = tn.read_until(b"login: ", timeout=self.timeout)
-            if b"login" not in response.lower():
-                # Try waiting for alternative prompts
-                response = tn.read_until(b"Username: ", timeout=self.timeout)
+            def _recv_filtered(timeout_sec: float) -> str:
+                end_time = time.time() + timeout_sec
+                buf = bytearray()
+                while time.time() < end_time:
+                    try:
+                        sock.settimeout(max(0.2, end_time - time.time()))
+                        chunk = sock.recv(1024)
+                        if not chunk:
+                            break
+                        # Handle basic Telnet negotiation (IAC sequences)
+                        i = 0
+                        clean = bytearray()
+                        while i < len(chunk):
+                            if chunk[i] == 0xFF and i + 2 < len(chunk):
+                                cmd = chunk[i + 1]
+                                opt = chunk[i + 2]
+                                if cmd == 0xFD:  # IAC DO -> send IAC WONT
+                                    try:
+                                        sock.sendall(bytes([0xFF, 0xFC, opt]))
+                                    except OSError:
+                                        pass
+                                elif cmd == 0xFB:  # IAC WILL -> send IAC DONT
+                                    try:
+                                        sock.sendall(bytes([0xFF, 0xFE, opt]))
+                                    except OSError:
+                                        pass
+                                i += 3
+                            elif chunk[i] == 0xFF and i + 1 < len(chunk):
+                                i += 2
+                            else:
+                                clean.append(chunk[i])
+                                i += 1
+                        buf.extend(clean)
+                        text = buf.decode("utf-8", errors="replace").lower()
+                        if any(p in text for p in ("login:", "username:", "user:", "password:", "pass:", "#", "$", ">")):
+                            break
+                    except (socket.timeout, OSError):
+                        break
+                return buf.decode("utf-8", errors="replace")
 
-            # Send username
-            tn.write(username.encode() + b"\n")
-            time.sleep(0.5)
+            # 1. Wait for login / username prompt
+            initial = _recv_filtered(self.timeout)
+            initial_lower = initial.lower()
 
-            # Wait for password prompt
-            response = tn.read_until(b"Password: ", timeout=self.timeout)
-            if b"password" not in response.lower() and b"assword" not in response:
-                tn.close()
-                return None
+            if any(p in initial_lower for p in ("login", "username", "user:")) or not initial:
+                sock.sendall(f"{username}\r\n".encode("utf-8"))
+                time.sleep(0.3)
 
-            # Send password
-            tn.write(password.encode() + b"\n")
-            time.sleep(1)
+            # 2. Wait for password prompt
+            pass_prompt = _recv_filtered(self.timeout)
+            if any(p in pass_prompt.lower() for p in ("password", "pass:")):
+                sock.sendall(f"{password}\r\n".encode("utf-8"))
+                time.sleep(0.5)
 
-            # Check response for success indicators
-            response = tn.read_very_eager().decode("utf-8", errors="replace")
-            tn.close()
+            # 3. Read post-login response
+            auth_resp = _recv_filtered(self.timeout)
+            auth_resp_lower = auth_resp.lower()
 
-            # Common failure indicators
             failure_indicators = [
                 "login incorrect",
                 "access denied",
@@ -242,19 +266,15 @@ class CredsChecker:
                 "bad password",
                 "login failed",
             ]
-
-            response_lower = response.lower()
             for indicator in failure_indicators:
-                if indicator in response_lower:
+                if indicator in auth_resp_lower:
                     return None
 
-            # Common success indicators
-            success_indicators = ["$", "#", ">", "welcome", "last login", "shell"]
+            success_indicators = ["$", "#", ">", "welcome", "last login", "shell", "busybox"]
             for indicator in success_indicators:
-                if indicator in response_lower:
+                if indicator in auth_resp_lower:
                     logger.warning(
-                        f"    [!] Telnet login success: {ip}:{port} "
-                        f"{username}:{password}"
+                        f"    [!] Telnet login success: {ip}:{port} {username}:{password}"
                     )
                     return {
                         "type": "Default Credentials - Telnet",
@@ -276,9 +296,14 @@ class CredsChecker:
                             "credentials and restrict access via firewall."
                         ),
                     }
-
         except (socket.timeout, ConnectionRefusedError, OSError, EOFError) as e:
             logger.debug(f"    Telnet error {ip}:{port}: {e}")
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
 
         return None
 
@@ -417,6 +442,59 @@ class CredsChecker:
 
         return None
 
+    def _check_redis(self, ip: str, port: int = 6379) -> Optional[dict]:
+        """
+        Check for unauthenticated Redis access.
+
+        Args:
+            ip: Target IP.
+            port: Redis port (usually 6379).
+
+        Returns:
+            Finding dict if open without auth, None otherwise.
+        """
+        sock = None
+        try:
+            sock = socket.create_connection((ip, port), timeout=self.timeout)
+            sock.sendall(b"PING\r\n")
+            resp = sock.recv(1024).decode("utf-8", errors="replace")
+            if "+PONG" in resp:
+                sock.sendall(b"INFO\r\n")
+                info_resp = sock.recv(4096).decode("utf-8", errors="replace")
+                evidence = "Unauthenticated PING returned +PONG"
+                if "redis_version" in info_resp:
+                    for line in info_resp.splitlines():
+                        if line.startswith("redis_version:"):
+                            evidence += f" ({line.strip()})"
+                            break
+                logger.warning(f"    [!] Redis unauthenticated access: {ip}:{port}")
+                return {
+                    "type": "Unauthenticated Access - Redis",
+                    "severity": "Critical",
+                    "target": f"{ip}:{port}",
+                    "evidence": evidence,
+                    "service": "Redis",
+                    "username": "None",
+                    "password": "None",
+                    "description": (
+                        f"Redis server at {ip}:{port} accepts commands without authentication. "
+                        "Attackers can read/modify data or achieve Remote Code Execution."
+                    ),
+                    "remediation": (
+                        "Enable authentication with `requirepass` in redis.conf, bind only to localhost, "
+                        "and restrict access with firewall rules."
+                    ),
+                }
+        except (socket.timeout, OSError):
+            pass
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+        return None
+
     def scan(self, target: str, port_results: list[dict]) -> list[dict]:
         """
         Run default credential checks against all applicable services.
@@ -435,6 +513,7 @@ class CredsChecker:
         ftp_targets = []
         telnet_targets = []
         http_targets = []
+        redis_targets = []
 
         for port_info in port_results:
             port = port_info.get("port", 0)
@@ -449,12 +528,15 @@ class CredsChecker:
                 telnet_targets.append((ip, port))
             if port in (80, 443, 8080, 8443, 8888, 9090) or "http" in service:
                 http_targets.append((ip, port))
+            if port == 6379 or "redis" in service:
+                redis_targets.append((ip, port))
 
         total_tests = (
             len(ssh_targets) * len(self.ssh_creds)
             + len(ftp_targets) * len(self.ftp_creds)
             + len(telnet_targets) * len(self.telnet_creds)
             + len(http_targets) * len(self.http_creds)
+            + len(redis_targets)
         )
 
         if total_tests == 0:
@@ -464,12 +546,18 @@ class CredsChecker:
         logger.info(
             f"Starting credential checks: {total_tests} combination(s) to test "
             f"(SSH:{len(ssh_targets)}, FTP:{len(ftp_targets)}, "
-            f"Telnet:{len(telnet_targets)}, HTTP:{len(http_targets)})"
+            f"Telnet:{len(telnet_targets)}, HTTP:{len(http_targets)}, "
+            f"Redis:{len(redis_targets)})"
         )
 
         # Use thread pool for concurrent testing
         with ThreadPoolExecutor(max_workers=self.threads) as executor:
             futures = []
+
+            # Queue Redis checks
+            for ip, port in redis_targets:
+                future = executor.submit(self._check_redis, ip, port)
+                futures.append(future)
 
             # Queue SSH checks
             for ip, port in ssh_targets:
