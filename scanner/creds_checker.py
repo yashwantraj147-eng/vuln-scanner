@@ -17,7 +17,6 @@ import ftplib
 import logging
 import socket
 import time
-from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
@@ -58,7 +57,7 @@ class CredsChecker:
         self.http_login_paths = config.get("http_login_paths", [])
         self.results = []
 
-    def _check_ssh(self, ip: str, port: int, username: str, password: str) -> Optional[dict]:
+    def _check_ssh(self, ip: str, port: int, username: str, password: str) -> dict | None:
         """
         Attempt SSH login with given credentials.
 
@@ -112,14 +111,14 @@ class CredsChecker:
         except paramiko.AuthenticationException:
             # Invalid credentials — expected
             logger.debug(f"    SSH auth failed: {ip}:{port} {username}:***")
-        except (paramiko.SSHException, socket.timeout, OSError) as e:
+        except (TimeoutError, paramiko.SSHException, OSError) as e:
             logger.debug(f"    SSH connection error {ip}:{port}: {e}")
         finally:
             client.close()
 
         return None
 
-    def _check_ftp(self, ip: str, port: int, username: str, password: str) -> Optional[dict]:
+    def _check_ftp(self, ip: str, port: int, username: str, password: str) -> dict | None:
         """
         Attempt FTP login with given credentials.
 
@@ -176,12 +175,12 @@ class CredsChecker:
             }
         except ftplib.error_perm:
             logger.debug(f"    FTP auth failed: {ip}:{port} {username}:***")
-        except (socket.timeout, OSError, EOFError) as e:
+        except (TimeoutError, OSError, EOFError) as e:
             logger.debug(f"    FTP connection error {ip}:{port}: {e}")
 
         return None
 
-    def _check_telnet(self, ip: str, port: int, username: str, password: str) -> Optional[dict]:
+    def _check_telnet(self, ip: str, port: int, username: str, password: str) -> dict | None:
         """
         Attempt Telnet login with given credentials using standard sockets
         (compatible with Python 3.10 through Python 3.13+ without telnetlib).
@@ -236,7 +235,7 @@ class CredsChecker:
                         text = buf.decode("utf-8", errors="replace").lower()
                         if any(p in text for p in ("login:", "username:", "user:", "password:", "pass:", "#", "$", ">")):
                             break
-                    except (socket.timeout, OSError):
+                    except (TimeoutError, OSError):
                         break
                 return buf.decode("utf-8", errors="replace")
 
@@ -245,13 +244,13 @@ class CredsChecker:
             initial_lower = initial.lower()
 
             if any(p in initial_lower for p in ("login", "username", "user:")) or not initial:
-                sock.sendall(f"{username}\r\n".encode("utf-8"))
+                sock.sendall(f"{username}\r\n".encode())
                 time.sleep(0.3)
 
             # 2. Wait for password prompt
             pass_prompt = _recv_filtered(self.timeout)
             if any(p in pass_prompt.lower() for p in ("password", "pass:")):
-                sock.sendall(f"{password}\r\n".encode("utf-8"))
+                sock.sendall(f"{password}\r\n".encode())
                 time.sleep(0.5)
 
             # 3. Read post-login response
@@ -296,7 +295,7 @@ class CredsChecker:
                             "credentials and restrict access via firewall."
                         ),
                     }
-        except (socket.timeout, ConnectionRefusedError, OSError, EOFError) as e:
+        except (TimeoutError, ConnectionRefusedError, OSError, EOFError) as e:
             logger.debug(f"    Telnet error {ip}:{port}: {e}")
         finally:
             if sock:
@@ -307,7 +306,7 @@ class CredsChecker:
 
         return None
 
-    def _check_http(self, ip: str, port: int, username: str, password: str) -> Optional[dict]:
+    def _check_http(self, ip: str, port: int, username: str, password: str) -> dict | None:
         """
         Attempt HTTP Basic/Form authentication with given credentials.
 
@@ -442,7 +441,7 @@ class CredsChecker:
 
         return None
 
-    def _check_redis(self, ip: str, port: int = 6379) -> Optional[dict]:
+    def _check_redis(self, ip: str, port: int = 6379) -> dict | None:
         """
         Check for unauthenticated Redis access.
 
@@ -485,7 +484,7 @@ class CredsChecker:
                         "and restrict access with firewall rules."
                     ),
                 }
-        except (socket.timeout, OSError):
+        except (TimeoutError, OSError):
             pass
         finally:
             if sock:
@@ -596,9 +595,7 @@ class CredsChecker:
                     futures.append(future)
 
             # Collect results
-            completed = 0
-            for future in as_completed(futures):
-                completed += 1
+            for completed, future in enumerate(as_completed(futures), 1):
                 if completed % 20 == 0:
                     logger.info(
                         f"  Credential check progress: {completed}/{total_tests}"
@@ -607,7 +604,7 @@ class CredsChecker:
                     result = future.result()
                     if result:
                         self.results.append(result)
-                except Exception as e:
+                except (OSError, TimeoutError, RuntimeError, ValueError, AttributeError, KeyError) as e:
                     logger.debug(f"  Credential check error: {e}")
 
         logger.info(

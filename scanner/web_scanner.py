@@ -13,15 +13,14 @@ LEGAL DISCLAIMER: Only use against systems you own or have explicit
 written authorization to test.
 """
 
+import logging
 import re
 import time
-import logging
 import urllib.parse
-from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
-from requests.exceptions import RequestException, Timeout, ConnectionError
+from requests.exceptions import ConnectionError, RequestException, Timeout
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +81,8 @@ class WebScanner:
         return f"{scheme}://{ip}:{port}"
 
     def _make_request(
-        self, url: str, method: str = "GET", data: Optional[dict] = None
-    ) -> Optional[requests.Response]:
+        self, url: str, method: str = "GET", data: dict | None = None
+    ) -> requests.Response | None:
         """
         Make an HTTP request with error handling and rate limiting.
 
@@ -319,7 +318,7 @@ class WebScanner:
                         "url": url,
                         "parameter": param,
                         "payload": payload,
-                        "evidence": f"Payload reflected in response body",
+                        "evidence": "Payload reflected in response body",
                         "method": method,
                         "description": (
                             f"Reflected XSS vulnerability detected. The payload "
@@ -533,7 +532,7 @@ class WebScanner:
         findings = []
         logger.info(f"  Discovering sensitive directories on {base_url}...")
 
-        def check_dir(path: str) -> Optional[dict]:
+        def check_dir(path: str) -> dict | None:
             url = f"{base_url}{path}"
             resp = self._make_request(url)
             if resp and resp.status_code in (200, 301, 302, 403):
@@ -724,8 +723,8 @@ class WebScanner:
                     ),
                     "remediation": "Validate the Origin header against a strict server-side whitelist.",
                 })
-        except Exception:
-            pass
+        except (RequestException, ValueError, KeyError, AttributeError) as e:
+            logger.debug(f"CORS check error for {base_url}: {e}")
 
         return findings
 

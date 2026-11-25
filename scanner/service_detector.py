@@ -8,9 +8,8 @@ service names and version numbers using regex signature matching.
 The detected versions are later matched against the CVE database.
 """
 
-import re
 import logging
-from typing import Optional
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,7 @@ class ServiceDetector:
             f"Service detector initialized with {len(self._compiled_signatures)} signatures."
         )
 
-    def detect_service(self, banner: str) -> Optional[dict]:
+    def detect_service(self, banner: str) -> dict | None:
         """
         Attempt to identify the service and version from a banner string.
 
@@ -90,7 +89,7 @@ class ServiceDetector:
         # If no signature matched, attempt generic detection from banner
         return self._generic_detect(banner)
 
-    def _generic_detect(self, banner: str) -> Optional[dict]:
+    def _generic_detect(self, banner: str) -> dict | None:
         """
         Fallback generic detection when no signature matches.
         Extracts common patterns like 'Server: X/Y' or 'service vX.Y.Z'.

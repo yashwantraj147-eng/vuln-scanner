@@ -8,18 +8,17 @@ LEGAL DISCLAIMER: Only use against systems you own or have explicit
 written permission to test. Unauthorized scanning is illegal.
 """
 
+import ipaddress
+import logging
 import socket
 import ssl
-import logging
-import ipaddress
-from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
 # Attempt to import scapy for SYN scanning (requires admin/root privileges)
 try:
-    from scapy.all import IP, TCP, sr1, conf
+    from scapy.all import IP, TCP, conf, sr1
     # Suppress scapy's verbose output
     conf.verb = 0
     SCAPY_AVAILABLE = True
@@ -81,7 +80,7 @@ class PortScanner:
                 logger.error(f"Cannot resolve target: {target}")
         return ips
 
-    def syn_scan(self, ip: str, port: int) -> Optional[dict]:
+    def syn_scan(self, ip: str, port: int) -> dict | None:
         """
         Perform a TCP SYN scan on a single port using Scapy.
         Requires root/administrator privileges.
@@ -130,14 +129,14 @@ class PortScanner:
                 elif tcp_flags == 0x14:  # RST-ACK — port is closed
                     return None
 
-        except Exception as e:
+        except (OSError, TimeoutError, RuntimeError, ValueError, AttributeError) as e:
             logger.debug(f"SYN scan error on {ip}:{port} — {e}")
             # Fallback to connect scan on error
             return self.connect_scan(ip, port)
 
         return None
 
-    def connect_scan(self, ip: str, port: int) -> Optional[dict]:
+    def connect_scan(self, ip: str, port: int) -> dict | None:
         """
         Perform a full TCP connect scan on a single port.
         Does not require elevated privileges.
@@ -169,7 +168,7 @@ class PortScanner:
                     return result
                 else:
                     return None
-            except socket.timeout:
+            except TimeoutError:
                 if attempt < self.max_retries:
                     logger.debug(f"Timeout on {ip}:{port}, retrying ({attempt+1})...")
                     continue
@@ -213,8 +212,8 @@ class PortScanner:
                         )
                         tls_sock.sendall(http_request.encode())
                         return tls_sock.recv(4096).decode("utf-8", errors="replace").strip()
-                except Exception:
-                    pass
+                except (ssl.SSLError, TimeoutError, OSError) as e:
+                    logger.debug(f"TLS banner grab fallback for {ip}:{port} — {e}")
             elif port in (80, 8080, 8888, 9090):
                 # Send an HTTP HEAD request to elicit server header
                 http_request = (
@@ -231,7 +230,7 @@ class PortScanner:
                 sock.send(b"\r\n")
 
             banner = sock.recv(4096).decode("utf-8", errors="replace").strip()
-        except (socket.timeout, ConnectionRefusedError, OSError) as e:
+        except (TimeoutError, ConnectionRefusedError, OSError) as e:
             logger.debug(f"Banner grab failed for {ip}:{port} — {e}")
         finally:
             sock.close()
@@ -316,16 +315,14 @@ class PortScanner:
                     future = executor.submit(scan_func, ip, port)
                     futures[future] = (ip, port)
 
-            completed = 0
-            for future in as_completed(futures):
-                completed += 1
+            for completed, future in enumerate(as_completed(futures), 1):
                 if completed % 100 == 0:
                     logger.info(f"  Progress: {completed}/{total_tasks} probes completed")
                 try:
                     result = future.result()
                     if result:
                         self.results.append(result)
-                except Exception as e:
+                except (OSError, TimeoutError, RuntimeError, ValueError, AttributeError, KeyError) as e:
                     ip, port = futures[future]
                     logger.error(f"Scan error for {ip}:{port} — {e}")
 

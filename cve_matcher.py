@@ -8,12 +8,12 @@ against known vulnerabilities using semantic version comparison.
 The CVE snapshot is a curated subset of real CVEs for common services.
 """
 
-import re
 import json
 import logging
-from typing import Optional
-from packaging import version as pkg_version
+import re
+
 import requests
+from packaging import version as pkg_version
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class CVEMatcher:
             logger.error(f"Invalid CVE database JSON: {e}")
             self.cve_entries = []
 
-    def _parse_version(self, version_str: str) -> Optional[pkg_version.Version]:
+    def _parse_version(self, version_str: str) -> pkg_version.Version | None:
         """
         Parse a version string into a comparable Version object.
         Handles common version format variations.
@@ -136,7 +136,7 @@ class CVEMatcher:
                         json.dump(self.cve_entries, f, indent=2)
 
                 return added
-        except Exception as e:
+        except (requests.RequestException, json.JSONDecodeError, OSError, KeyError, ValueError) as e:
             logger.warning(f"Unable to update from CISA KEV feed: {e}")
         return 0
 
@@ -179,7 +179,7 @@ class CVEMatcher:
                         "description": f"[OSV] {summary}",
                         "remediation": f"Upgrade {service} to the latest stable release.",
                     })
-        except Exception as e:
+        except (requests.RequestException, json.JSONDecodeError, OSError, KeyError, ValueError) as e:
             logger.debug(f"OSV lookup error for {service} v{version}: {e}")
 
         return findings

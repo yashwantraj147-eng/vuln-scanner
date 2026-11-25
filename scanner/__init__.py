@@ -6,16 +6,16 @@
 # Each module is responsible for a specific type of security assessment.
 # ============================================================================
 
+from scanner.creds_checker import CredsChecker
 from scanner.port_scanner import PortScanner
 from scanner.service_detector import ServiceDetector
-from scanner.web_scanner import WebScanner
 from scanner.ssl_checker import SSLChecker
-from scanner.creds_checker import CredsChecker
+from scanner.web_scanner import WebScanner
 
 __all__ = [
+    "CredsChecker",
     "PortScanner",
+    "SSLChecker",
     "ServiceDetector",
     "WebScanner",
-    "SSLChecker",
-    "CredsChecker",
 ]

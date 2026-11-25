@@ -10,9 +10,7 @@ Run with: pytest tests/test_scanner.py -v
 
 import json
 import os
-import socket
-import tempfile
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -762,10 +760,10 @@ class TestCredsChecker:
     @patch("paramiko.SSHClient")
     def test_ssh_failure(self, mock_ssh_class, creds_checker_config):
         """Test SSH credential check with failed login."""
-        from scanner.creds_checker import CredsChecker
-
         # Need to import paramiko for the exception
         import paramiko
+
+        from scanner.creds_checker import CredsChecker
 
         checker = CredsChecker(config=creds_checker_config)
 
@@ -974,7 +972,8 @@ class TestReportGenerator:
         )
 
         assert os.path.exists(html_path)
-        content = open(html_path).read()
+        with open(html_path, encoding="utf-8") as f:
+            content = f.read()
         assert "Test Report" in content
         assert "127.0.0.1" in content
         assert "CRITICAL" in content
@@ -1006,7 +1005,8 @@ class TestReportGenerator:
         )
 
         assert os.path.exists(csv_path)
-        content = open(csv_path, encoding="utf-8").read()
+        with open(csv_path, encoding="utf-8") as f:
+            content = f.read()
         assert "Module,Type,Severity,Target,Evidence,Description,Remediation" in content
         assert "SQL Injection" in content
         assert "Critical" in content
@@ -1062,9 +1062,9 @@ class TestIntegration:
         Test the full pipeline: port results -> service detection -> CVE matching.
         Uses sample data (no actual network calls).
         """
-        from scanner.service_detector import ServiceDetector
         from cve_matcher import CVEMatcher
         from report_generator import ReportGenerator
+        from scanner.service_detector import ServiceDetector
 
         # Step 1: Detect services from sample port results
         detector = ServiceDetector(config=service_detector_config)

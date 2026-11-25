@@ -29,35 +29,33 @@ LEGAL DISCLAIMER:
     The authors assume no liability for misuse of this tool.
 """
 
+import argparse
+import logging
 import os
 import sys
 import time
-import json
-import logging
-import argparse
-from datetime import datetime, timezone
 
 import yaml
-from colorama import init, Fore, Style
+from colorama import Fore, Style, init
 
 try:
     from rich.console import Console
     from rich.table import Table
-    from rich.panel import Panel
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
 
-from scanner.port_scanner import PortScanner
-from scanner.service_detector import ServiceDetector
-from scanner.web_scanner import WebScanner
-from scanner.ssl_checker import SSLChecker
-from scanner.creds_checker import CredsChecker
 from cve_matcher import CVEMatcher
 from report_generator import ReportGenerator
+from scanner.creds_checker import CredsChecker
+from scanner.port_scanner import PortScanner
+from scanner.service_detector import ServiceDetector
+from scanner.ssl_checker import SSLChecker
+from scanner.web_scanner import WebScanner
 
 # Initialize colorama for Windows terminal colors
 init(autoreset=True)
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Logging Configuration
@@ -193,13 +191,13 @@ def load_config(config_path: str) -> dict:
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
-        logging.info(f"Configuration loaded from {config_path}")
+        logger.info(f"Configuration loaded from {config_path}")
         return config
     except FileNotFoundError:
-        logging.error(f"Configuration file not found: {config_path}")
+        logger.error(f"Configuration file not found: {config_path}")
         sys.exit(1)
     except yaml.YAMLError as e:
-        logging.error(f"Invalid YAML configuration: {e}")
+        logger.error(f"Invalid YAML configuration: {e}")
         sys.exit(1)
 
 
@@ -216,7 +214,6 @@ def main():
 
     # Setup logging
     setup_logging(verbose=args.verbose)
-    logger = logging.getLogger(__name__)
 
     # Load configuration
     config = load_config(args.config)
@@ -232,9 +229,7 @@ def main():
     if args.modules.lower() == "all":
         active_modules = available_modules
     else:
-        active_modules = set(
-            m.strip().lower() for m in args.modules.split(",")
-        )
+        active_modules = {m.strip().lower() for m in args.modules.split(",")}
         invalid = active_modules - available_modules
         if invalid:
             logger.error(
@@ -264,7 +259,7 @@ def main():
     # =================================================================
     if "ports" in active_modules:
         logger.info(f"\n{Fore.CYAN}{'─'*60}")
-        logger.info(f"MODULE: Port Scanner")
+        logger.info("MODULE: Port Scanner")
         logger.info(f"{'─'*60}{Style.RESET_ALL}")
 
         port_config = config.get("port_scanner", {})
@@ -277,7 +272,7 @@ def main():
     # =================================================================
     if "services" in active_modules and port_results:
         logger.info(f"\n{Fore.CYAN}{'─'*60}")
-        logger.info(f"MODULE: Service Detection")
+        logger.info("MODULE: Service Detection")
         logger.info(f"{'─'*60}{Style.RESET_ALL}")
 
         svc_config = config.get("service_detector", {})
@@ -289,7 +284,7 @@ def main():
     # =================================================================
     if "cve" in active_modules and service_results:
         logger.info(f"\n{Fore.CYAN}{'─'*60}")
-        logger.info(f"MODULE: CVE Matching")
+        logger.info("MODULE: CVE Matching")
         logger.info(f"{'─'*60}{Style.RESET_ALL}")
 
         cve_db_path = config.get("cve_database", {}).get(
@@ -321,7 +316,7 @@ def main():
     # =================================================================
     if "web" in active_modules and port_results:
         logger.info(f"\n{Fore.CYAN}{'─'*60}")
-        logger.info(f"MODULE: Web Vulnerability Scanner")
+        logger.info("MODULE: Web Vulnerability Scanner")
         logger.info(f"{'─'*60}{Style.RESET_ALL}")
 
         web_config = config.get("web_scanner", {})
@@ -336,7 +331,7 @@ def main():
     # =================================================================
     if "ssl" in active_modules and port_results:
         logger.info(f"\n{Fore.CYAN}{'─'*60}")
-        logger.info(f"MODULE: SSL/TLS Checker")
+        logger.info("MODULE: SSL/TLS Checker")
         logger.info(f"{'─'*60}{Style.RESET_ALL}")
 
         ssl_config = config.get("ssl_checker", {})
@@ -351,7 +346,7 @@ def main():
     # =================================================================
     if "creds" in active_modules and port_results:
         logger.info(f"\n{Fore.CYAN}{'─'*60}")
-        logger.info(f"MODULE: Default Credentials Checker")
+        logger.info("MODULE: Default Credentials Checker")
         logger.info(f"{'─'*60}{Style.RESET_ALL}")
 
         creds_config = config.get("creds_checker", {})
@@ -404,7 +399,7 @@ def main():
             console.print(sev_table)
     else:
         print(f"\n{Fore.GREEN}{'═'*60}")
-        print(f"  SCAN COMPLETE")
+        print("  SCAN COMPLETE")
         print(f"{'═'*60}{Style.RESET_ALL}")
         print(f"  Target:        {args.target}")
         print(f"  Duration:      {scan_duration:.1f} seconds")
@@ -413,7 +408,7 @@ def main():
         print(f"  Findings:      {total_findings}")
 
         if total_findings > 0:
-            print(f"\n  Severity Breakdown:")
+            print("\n  Severity Breakdown:")
             if severity_summary["Critical"]:
                 print(f"    {Fore.RED}  Critical: {severity_summary['Critical']}{Style.RESET_ALL}")
             if severity_summary["High"]:

@@ -8,8 +8,8 @@ templates with embedded Chart.js visualizations.
 
 import csv
 import json
-import os
 import logging
+import os
 from datetime import datetime, timezone
 
 from jinja2 import Environment, FileSystemLoader
