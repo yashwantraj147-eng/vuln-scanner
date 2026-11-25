@@ -51,6 +51,12 @@ dev = [
 [project.scripts]
 vulnscanner = "main:main"
 
+[tool.setuptools]
+py-modules = ["main", "cve_matcher", "report_generator"]
+
+[tool.setuptools.packages.find]
+include = ["scanner*"]
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
